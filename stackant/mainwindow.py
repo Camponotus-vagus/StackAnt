@@ -29,7 +29,7 @@ from .frame_filter import (
     suggested_decimation_target,
 )
 from .stacker import FocusStacker
-from .pyramid_stacker import PyramidStacker
+from .pyramid_stacker import PyramidStacker, GUIDED_FILTER_AVAILABLE
 from .stacking import choose_method
 from .widgets.controls import ControlsPanel
 from .widgets.filmstrip import Filmstrip
@@ -165,6 +165,22 @@ class MainWindow(QMainWindow):
         sc.spn_pyramid_depth.setValue(pp["depth"] if pp["depth"] > 0 else 0)
         sc.spn_guided_radius.setValue(pp["guided_radius"])
         sc.chk_drop_misaligned.setChecked(pp["drop_misaligned"])
+
+        if not GUIDED_FILTER_AVAILABLE:
+            sc = self.controls.stack_controls
+            sc.rb_pyramid.setEnabled(False)
+            sc.rb_auto.setEnabled(False)
+            sc.btn_compare.setEnabled(False)
+            sc.set_method("focus-stack")
+            tip = (
+                "opencv-contrib-python-headless is required for the Pyramid stacker."
+            )
+            sc.rb_pyramid.setToolTip(tip)
+            sc.rb_auto.setToolTip(tip)
+            sc.btn_compare.setToolTip(tip)
+            self.statusBar().showMessage(
+                "Pyramid stacker disabled: install opencv-contrib-python-headless."
+            )
 
     def _wire_signals(self) -> None:
         self.controls.video_selected.connect(self._on_video_selected)
