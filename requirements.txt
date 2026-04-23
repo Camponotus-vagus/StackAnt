@@ -1,9 +1,9 @@
-# Runtime dependencies. Pinned to the versions verified during v0.1.0
-# development; newer patch releases are unlikely to break anything, but
-# narrow pinning keeps user reports reproducible.
+# Runtime dependencies. Major-version ranges keep user reports roughly
+# reproducible while still resolving on Python 3.10-3.12 — numpy 2.3+
+# requires 3.11+ so a hard pin on the very latest breaks 3.10.
 PyQt6==6.11.0
 # opencv-python-headless (not opencv-python): the non-headless wheel bundles
 # outdated Qt5 plugins that shadow PyQt6's and break GUI launch.
 opencv-python-headless==4.13.0.92
 Pillow==12.2.0
-numpy==2.4.4
+numpy>=1.26,<3
