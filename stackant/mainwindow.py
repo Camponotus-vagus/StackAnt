@@ -6,8 +6,6 @@ from typing import Sequence
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QFrame,
-    QLabel,
     QMainWindow,
     QProgressBar,
     QSplitter,
@@ -30,29 +28,9 @@ from .stacker import FocusStacker
 from .widgets.controls import ControlsPanel
 from .widgets.filmstrip import Filmstrip
 from .widgets.log_panel import LogPanel
+from .widgets.preview_panel import PreviewPanel
 
 STACKED_FILENAME = "stacked_preview.tif"
-
-
-class _PlaceholderPanel(QFrame):
-    def __init__(self, title: str, subtitle: str = "", parent=None):
-        super().__init__(parent)
-        self.setFrameShape(QFrame.Shape.StyledPanel)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        header = QLabel(title)
-        header.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        font = header.font()
-        font.setBold(True)
-        header.setFont(font)
-        layout.addWidget(header)
-        if subtitle:
-            sub = QLabel(subtitle)
-            sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            sub.setWordWrap(True)
-            sub.setStyleSheet("color: gray;")
-            layout.addWidget(sub)
-        layout.addStretch(1)
 
 
 class MainWindow(QMainWindow):
@@ -83,9 +61,7 @@ class MainWindow(QMainWindow):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         self.controls = ControlsPanel()
         self.filmstrip = Filmstrip()
-        self.preview_panel = _PlaceholderPanel(
-            "Preview", "Stacked result and crop detail appear here after Session 5."
-        )
+        self.preview_panel = PreviewPanel()
         splitter.addWidget(self.controls)
         splitter.addWidget(self.filmstrip)
         splitter.addWidget(self.preview_panel)
@@ -121,6 +97,9 @@ class MainWindow(QMainWindow):
         sc.cancel_requested.connect(self._stacker.cancel)
 
         self.filmstrip.toggle_requested.connect(self._on_frame_toggled)
+        self.filmstrip.currentItemChanged.connect(self._on_filmstrip_selection_changed)
+
+        self.preview_panel.restack_requested.connect(self._on_stack_requested)
 
         self._extractor.progress.connect(self.progress.setValue)
         self._extractor.log.connect(self.log_panel.append)
@@ -140,11 +119,13 @@ class MainWindow(QMainWindow):
     def _on_video_selected(self, path: str) -> None:
         self.filmstrip.clear()
         self._filter_state = None
+        self.preview_panel.clear()
         self.controls.filter_controls.setEnabled(False)
         self.controls.stack_controls.set_ready(False)
         self.statusBar().showMessage(f"Loaded video: {Path(path).name}", 4000)
 
     def _on_folder_selected(self, path: str) -> None:
+        self.preview_panel.clear()
         frames = list_images(path)
         if not frames:
             self.statusBar().showMessage("No images found in folder.", 5000)
@@ -241,6 +222,13 @@ class MainWindow(QMainWindow):
         self.controls.filter_controls.set_threshold(value)
         self._refresh_filter_view()
 
+    def _on_filmstrip_selection_changed(self, current, _previous) -> None:
+        if current is None:
+            self.preview_panel.set_input_reference(None)
+            return
+        path = current.data(Qt.ItemDataRole.UserRole)
+        self.preview_panel.set_input_reference(path)
+
     def _on_frame_toggled(self, index: int) -> None:
         if self._filter_state is None:
             return
@@ -277,7 +265,7 @@ class MainWindow(QMainWindow):
         self.progress.setVisible(False)
         self.controls.stack_controls.set_running(False)
         self.statusBar().showMessage(f"Stack complete: {Path(output_path).name}", 8000)
-        # Session 5 will load this into the preview panel.
+        self.preview_panel.show_stacked(output_path)
 
     def _on_stack_failed(self, msg: str) -> None:
         self.progress.setVisible(False)
