@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
 class StackControls(QGroupBox):
     stack_requested = pyqtSignal()
     cancel_requested = pyqtSignal()
+    compare_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__("Focus stacking", parent)
@@ -69,6 +70,15 @@ class StackControls(QGroupBox):
 
         self.btn_stack.clicked.connect(self.stack_requested.emit)
         self.btn_cancel.clicked.connect(self.cancel_requested.emit)
+
+        self.btn_compare = QPushButton("Compare methods")
+        self.btn_compare.setToolTip(
+            "Runs both stackers on the current frames and shows them\n"
+            "side-by-side in the preview. Takes roughly twice as long."
+        )
+        self.btn_compare.setEnabled(False)
+        self.btn_compare.clicked.connect(self.compare_requested.emit)
+        layout.addWidget(self.btn_compare)
 
         self.btn_advanced = QPushButton("Advanced options ▾")
         self.btn_advanced.setCheckable(True)
@@ -159,12 +169,14 @@ class StackControls(QGroupBox):
     def set_ready(self, ready: bool) -> None:
         self._ready = ready
         self.btn_stack.setEnabled(ready and not self._running)
+        self.btn_compare.setEnabled(ready and not self._running)
 
     def set_running(self, running: bool) -> None:
         self._running = running
         self.btn_cancel.setEnabled(running)
         # Stack is only clickable when we have frames AND nothing is running.
         self.btn_stack.setEnabled(self._ready and not running)
+        self.btn_compare.setEnabled(self._ready and not running)
 
     def params(self) -> dict:
         extra = self.txt_extra.text().strip()
