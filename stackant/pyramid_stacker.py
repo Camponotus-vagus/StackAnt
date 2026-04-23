@@ -16,8 +16,21 @@ Design tenets:
 """
 from __future__ import annotations
 
+import math
+import threading
+from pathlib import Path
+from typing import Callable, Sequence
+
 import cv2
 import numpy as np
+from PyQt6.QtCore import QObject, QThread, pyqtSignal
+
+try:
+    from cv2 import ximgproc as _ximgproc
+    GUIDED_FILTER_AVAILABLE = True
+except ImportError:
+    _ximgproc = None
+    GUIDED_FILTER_AVAILABLE = False
 
 
 def build_laplacian_pyramid(
@@ -70,14 +83,6 @@ def compute_sml(gray: np.ndarray) -> np.ndarray:
     ml = ddx + ddy
     # Box-filter summation across the window.
     return cv2.boxFilter(ml, cv2.CV_32F, (_SML_WINDOW, _SML_WINDOW), normalize=False)
-
-
-try:
-    from cv2 import ximgproc as _ximgproc
-    GUIDED_FILTER_AVAILABLE = True
-except ImportError:  # opencv-python (non-contrib) was installed
-    _ximgproc = None
-    GUIDED_FILTER_AVAILABLE = False
 
 
 def smooth_weights(
@@ -205,11 +210,6 @@ def align_to_reference(
     return aligned, warp, True
 
 
-import math
-from pathlib import Path
-from typing import Callable, Sequence
-
-
 def _auto_pyramid_depth(height: int, width: int) -> int:
     return max(3, int(math.floor(math.log2(min(height, width)))) - 3)
 
@@ -332,11 +332,6 @@ def run_pyramid_stack(
 
 class Cancelled(Exception):
     """Raised inside run_pyramid_stack when the caller requests cancellation."""
-
-
-import threading
-
-from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
 
 class _PyramidWorker(QObject):

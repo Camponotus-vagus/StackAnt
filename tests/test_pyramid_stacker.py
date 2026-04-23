@@ -1,9 +1,24 @@
+import os
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+import sys
+from pathlib import Path
+
 import cv2
 import numpy as np
+from PIL import Image
+from PyQt6.QtCore import QEventLoop, QTimer
+from PyQt6.QtWidgets import QApplication
 
 from stackant.pyramid_stacker import (
+    PyramidStacker,
+    align_to_reference,
     build_laplacian_pyramid,
     collapse_laplacian_pyramid,
+    compute_sml,
+    fuse_images,
+    run_pyramid_stack,
+    smooth_weights,
 )
 
 
@@ -34,9 +49,6 @@ def test_collapse_recovers_the_original_within_tolerance():
     assert np.abs(recovered - img).mean() < 0.01
 
 
-from stackant.pyramid_stacker import compute_sml
-
-
 def test_sml_is_zero_on_constant_image():
     img = np.full((64, 64), 0.5, dtype=np.float32)
     sml = compute_sml(img)
@@ -57,9 +69,6 @@ def test_sml_preserves_shape():
     assert compute_sml(img).shape == (37, 53)
 
 
-from stackant.pyramid_stacker import smooth_weights
-
-
 def test_smooth_weights_preserves_shape_and_range():
     rng = np.random.default_rng(0)
     weights = rng.random((64, 64), dtype=np.float32)
@@ -72,7 +81,6 @@ def test_smooth_weights_preserves_shape_and_range():
 
 
 def test_smooth_weights_is_actually_smoothed():
-    rng = np.random.default_rng(1)
     impulse = np.zeros((64, 64), dtype=np.float32)
     impulse[32, 32] = 1.0
     guide = np.full((64, 64, 3), 0.5, dtype=np.float32)
@@ -80,9 +88,6 @@ def test_smooth_weights_is_actually_smoothed():
     # An isolated 1-pixel impulse must spread out.
     assert smoothed[32, 32] < 0.5
     assert smoothed[32:34, 32:34].sum() > 0.01  # mass spread into neighborhood
-
-
-from stackant.pyramid_stacker import fuse_images
 
 
 def test_fuse_prefers_sharp_over_blurred():
@@ -95,16 +100,14 @@ def test_fuse_prefers_sharp_over_blurred():
     assert fused.shape == sharp.shape
     # Fused sharpness should be closer to the sharp source's sharpness
     # than to the blurred one's.
-    gray = lambda im: cv2.cvtColor((im * 255).astype(np.uint8), cv2.COLOR_RGB2GRAY).astype(np.float32) / 255.0
+    def gray(im):
+        return cv2.cvtColor((im * 255).astype(np.uint8), cv2.COLOR_RGB2GRAY).astype(np.float32) / 255.0
     sml_sharp = compute_sml(gray(sharp)).mean()
     sml_blurred = compute_sml(gray(blurred)).mean()
     sml_fused = compute_sml(gray(fused)).mean()
     midpoint = (sml_sharp + sml_blurred) / 2
     assert sml_fused > midpoint, \
         f"Fused sharpness {sml_fused:.4f} should be above midpoint {midpoint:.4f}"
-
-
-from stackant.pyramid_stacker import align_to_reference
 
 
 def test_align_to_reference_identity_is_near_identity():
@@ -127,14 +130,6 @@ def test_align_to_reference_recovers_small_translation():
     # Central region should match the reference closely after alignment.
     err = np.abs(aligned[10:-10, 10:-10] - ref[10:-10, 10:-10]).mean()
     assert err < 0.1
-
-
-import tempfile
-from pathlib import Path
-
-from PIL import Image
-
-from stackant.pyramid_stacker import run_pyramid_stack
 
 
 def _write_synth_frame(path: Path, blur_sigma: float, seed: int = 42, size=(128, 128)):
@@ -167,16 +162,6 @@ def test_run_pyramid_stack_produces_readable_tiff(tmp_path):
     # Output is a TIFF whose size matches the inputs.
     with Image.open(out) as img:
         assert img.size == (128, 128)
-
-
-import os
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
-import sys
-from PyQt6.QtCore import QEventLoop, QTimer
-from PyQt6.QtWidgets import QApplication
-
-from stackant.pyramid_stacker import PyramidStacker
 
 
 def _make_app():
