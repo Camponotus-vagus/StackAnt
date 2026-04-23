@@ -85,3 +85,54 @@ def load_stack_params() -> dict:
         "extra_cli": s.value("stack/extra_cli", "", type=str),
         "no_opencl": s.value("stack/no_opencl", False, type=bool),
     }
+
+
+# ---- stacker method selection (v0.2) ----------------------------------
+
+_VALID_METHODS = {"pyramid", "focus-stack", "auto"}
+_DEFAULT_METHOD = "pyramid"
+
+
+def save_method(method: str) -> None:
+    if method not in _VALID_METHODS:
+        raise ValueError(f"invalid method: {method}")
+    _s().setValue("stack/method", method)
+
+
+def load_method() -> str:
+    m = _s().value("stack/method", _DEFAULT_METHOD, type=str)
+    return m if m in _VALID_METHODS else _DEFAULT_METHOD
+
+
+# ---- pyramid advanced params (v0.2) -----------------------------------
+
+_DEFAULT_PYRAMID_DEPTH = -1  # -1 = auto
+_DEFAULT_GUIDED_RADIUS = 8
+_MIN_GUIDED_RADIUS = 4
+_MAX_GUIDED_RADIUS = 32
+
+
+def save_pyramid_params(
+    depth: int,
+    guided_radius: int,
+    drop_misaligned: bool,
+) -> None:
+    s = _s()
+    s.setValue("stack/pyramid/depth", int(depth))
+    s.setValue(
+        "stack/pyramid/guided_radius",
+        max(_MIN_GUIDED_RADIUS, min(_MAX_GUIDED_RADIUS, int(guided_radius))),
+    )
+    s.setValue("stack/pyramid/drop_misaligned", bool(drop_misaligned))
+
+
+def load_pyramid_params() -> dict:
+    s = _s()
+    depth = s.value("stack/pyramid/depth", _DEFAULT_PYRAMID_DEPTH, type=int)
+    raw_radius = s.value("stack/pyramid/guided_radius", _DEFAULT_GUIDED_RADIUS, type=int)
+    clamped = max(_MIN_GUIDED_RADIUS, min(_MAX_GUIDED_RADIUS, raw_radius))
+    return {
+        "depth": depth,
+        "guided_radius": clamped,
+        "drop_misaligned": s.value("stack/pyramid/drop_misaligned", True, type=bool),
+    }

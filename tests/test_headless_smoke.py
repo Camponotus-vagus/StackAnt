@@ -595,3 +595,24 @@ class TestSettings:
         sc.chk_no_opencl.setChecked(loaded["no_opencl"])
         count = sc.params()["extra_cli"].count("--no-opencl")
         assert count == 1, f"After reload, --no-opencl appears {count} times"
+
+    def test_save_load_pyramid_params_roundtrip(self, win):
+        from stackant import settings
+        settings.save_pyramid_params(
+            depth=5,
+            guided_radius=12,
+            drop_misaligned=False,
+        )
+        loaded = settings.load_pyramid_params()
+        assert loaded["depth"] == 5
+        assert loaded["guided_radius"] == 12
+        assert loaded["drop_misaligned"] is False
+
+    def test_save_load_method_roundtrip(self, win):
+        from stackant import settings
+        settings.save_method("focus-stack")
+        assert settings.load_method() == "focus-stack"
+        settings.save_method("pyramid")
+        assert settings.load_method() == "pyramid"
+        settings.save_method("auto")
+        assert settings.load_method() == "auto"
