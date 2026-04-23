@@ -80,3 +80,25 @@ def test_smooth_weights_is_actually_smoothed():
     # An isolated 1-pixel impulse must spread out.
     assert smoothed[32, 32] < 0.5
     assert smoothed[32:34, 32:34].sum() > 0.01  # mass spread into neighborhood
+
+
+from stackant.pyramid_stacker import fuse_images
+
+
+def test_fuse_prefers_sharp_over_blurred():
+    """Given two frames, one sharp and one blurred, the fused image
+    should be at least as sharp as the sharp source — not averaged."""
+    rng = np.random.default_rng(42)
+    sharp = rng.random((128, 128, 3), dtype=np.float32)
+    blurred = cv2.GaussianBlur(sharp, (15, 15), 5.0)
+    fused = fuse_images([sharp, blurred], levels=4, guided_radius=8)
+    assert fused.shape == sharp.shape
+    # Fused sharpness should be closer to the sharp source's sharpness
+    # than to the blurred one's.
+    gray = lambda im: cv2.cvtColor((im * 255).astype(np.uint8), cv2.COLOR_RGB2GRAY).astype(np.float32) / 255.0
+    sml_sharp = compute_sml(gray(sharp)).mean()
+    sml_blurred = compute_sml(gray(blurred)).mean()
+    sml_fused = compute_sml(gray(fused)).mean()
+    midpoint = (sml_sharp + sml_blurred) / 2
+    assert sml_fused > midpoint, \
+        f"Fused sharpness {sml_fused:.4f} should be above midpoint {midpoint:.4f}"

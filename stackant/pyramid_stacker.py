@@ -105,3 +105,65 @@ def smooth_weights(
         radius=int(radius),
         eps=float(eps),
     )
+
+
+def fuse_images(
+    images: list[np.ndarray],
+    levels: int,
+    guided_radius: int = 8,
+) -> np.ndarray:
+    """Laplacian-pyramid fusion of N float32 RGB images in [0, 1].
+
+    Pipeline:
+        - build L-level Laplacian pyramid per image
+        - at each level, compute per-image SML on its grayscale
+          component, smooth with guided filter, normalise across N
+          so weights sum to 1 at every pixel
+        - weighted-sum Laplacian coefficients per level
+        - collapse to full resolution
+
+    Input images must be pre-aligned and have identical shape.
+    """
+    if not images:
+        raise ValueError("fuse_images needs at least one image")
+    shape = images[0].shape
+    for im in images[1:]:
+        if im.shape != shape:
+            raise ValueError("fuse_images: all images must share shape")
+
+    pyramids = [build_laplacian_pyramid(im, levels) for im in images]
+    fused_levels: list[np.ndarray] = []
+
+    for lvl in range(levels):
+        level_bands = [p[lvl] for p in pyramids]
+        # Per-image sharpness on grayscale version of the band's
+        # corresponding Gaussian (we use the band itself as a proxy
+        # — Laplacian bands are already high-frequency for lvl<last;
+        # for the base Gaussian we use the band directly).
+        grays = [
+            cv2.cvtColor(np.clip(b, -1, 1).astype(np.float32), cv2.COLOR_RGB2GRAY)
+            if b.ndim == 3 else b
+            for b in level_bands
+        ]
+        weights = [compute_sml(g) for g in grays]
+        # Smooth each weight map with the source band as guide.
+        smoothed = [
+            smooth_weights(w, b if b.ndim == 3 else np.stack([b]*3, axis=-1),
+                           radius=guided_radius)
+            for w, b in zip(weights, level_bands)
+        ]
+        # Normalise across images so weights sum to 1 per pixel.
+        stacked = np.stack(smoothed, axis=0)
+        stacked = np.maximum(stacked, 0.0) + 1e-8
+        norms = stacked / stacked.sum(axis=0, keepdims=True)
+        # Weighted sum of Laplacian coefficients. For 3-channel bands
+        # broadcast the per-pixel weight across channels.
+        fused = np.zeros_like(level_bands[0])
+        for i, band in enumerate(level_bands):
+            w = norms[i]
+            if band.ndim == 3:
+                w = w[..., np.newaxis]
+            fused += w * band
+        fused_levels.append(fused)
+
+    return collapse_laplacian_pyramid(fused_levels)
