@@ -137,9 +137,9 @@ from PIL import Image
 from stackant.pyramid_stacker import run_pyramid_stack
 
 
-def _write_synth_frame(path: Path, blur_sigma: float, seed: int = 42):
+def _write_synth_frame(path: Path, blur_sigma: float, seed: int = 42, size=(128, 128)):
     rng = np.random.default_rng(seed)
-    arr = rng.integers(0, 255, size=(128, 128, 3), dtype=np.uint8)
+    arr = rng.integers(0, 255, size=(*size, 3), dtype=np.uint8)
     if blur_sigma > 0:
         ksize = max(3, int(blur_sigma * 4) | 1)
         arr = cv2.GaussianBlur(arr, (ksize, ksize), blur_sigma)
@@ -167,3 +167,77 @@ def test_run_pyramid_stack_produces_readable_tiff(tmp_path):
     # Output is a TIFF whose size matches the inputs.
     with Image.open(out) as img:
         assert img.size == (128, 128)
+
+
+import os
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+import sys
+from PyQt6.QtCore import QEventLoop, QTimer
+from PyQt6.QtWidgets import QApplication
+
+from stackant.pyramid_stacker import PyramidStacker
+
+
+def _make_app():
+    return QApplication.instance() or QApplication(sys.argv)
+
+
+def test_pyramid_stacker_runs_to_completion(tmp_path):
+    app = _make_app()  # noqa: F841 — keep a reference so the QApplication isn't gc'd mid-test
+    paths = []
+    for i, sigma in enumerate([0.0, 2.0, 4.0]):
+        p = tmp_path / f"frame_{i:02d}.tif"
+        _write_synth_frame(p, sigma, seed=42 + i)
+        paths.append(str(p))
+
+    stacker = PyramidStacker()
+    out = str(tmp_path / "stacked.tif")
+
+    loop = QEventLoop()
+    result: dict = {}
+    stacker.finished_ok.connect(lambda p: (result.update(path=p), loop.quit()))
+    stacker.failed.connect(lambda m: (result.update(err=m), loop.quit()))
+    QTimer.singleShot(30000, loop.quit)  # safety timeout
+    stacker.stack(
+        input_paths=paths,
+        output_path=out,
+        pyramid_depth=None,
+        guided_radius=8,
+        drop_misaligned=True,
+    )
+    loop.exec()
+    assert result.get("path") == out
+    assert Path(out).is_file()
+
+
+def test_pyramid_stacker_cancellation_returns_cancelled_signal(tmp_path):
+    app = _make_app()  # noqa: F841 — keep a reference so the QApplication isn't gc'd mid-test
+    paths = []
+    for i in range(8):
+        p = tmp_path / f"frame_{i:02d}.tif"
+        # Larger frames so the worker is guaranteed to still be mid-pipeline
+        # when we fire the cancel signal — tiny inputs can race us to DONE.
+        _write_synth_frame(p, float(i), seed=7 + i, size=(512, 512))
+        paths.append(str(p))
+
+    stacker = PyramidStacker()
+    out = str(tmp_path / "stacked.tif")
+    loop = QEventLoop()
+    result: dict = {}
+    stacker.cancelled.connect(lambda: (result.update(cancelled=True), loop.quit()))
+    stacker.finished_ok.connect(lambda _: loop.quit())
+    stacker.failed.connect(lambda _: loop.quit())
+    QTimer.singleShot(15000, loop.quit)
+    stacker.stack(
+        input_paths=paths,
+        output_path=out,
+        pyramid_depth=None,
+        guided_radius=8,
+        drop_misaligned=True,
+    )
+    # Cancel as soon as the event loop spins so we're guaranteed to hit a
+    # worker checkpoint before the pipeline finishes.
+    QTimer.singleShot(0, stacker.cancel)
+    loop.exec()
+    assert result.get("cancelled") is True

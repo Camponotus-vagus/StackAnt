@@ -332,3 +332,138 @@ def run_pyramid_stack(
 
 class Cancelled(Exception):
     """Raised inside run_pyramid_stack when the caller requests cancellation."""
+
+
+import threading
+
+from PyQt6.QtCore import QObject, QThread, pyqtSignal
+
+
+class _PyramidWorker(QObject):
+    progress = pyqtSignal(int)
+    stage = pyqtSignal(str)
+    finished_ok = pyqtSignal(str)
+    failed = pyqtSignal(str)
+    cancelled = pyqtSignal()
+
+    def __init__(self, params: dict, cancel_event: threading.Event):
+        super().__init__()
+        self._params = params
+        self._cancel = cancel_event
+
+    def run(self) -> None:
+        def on_progress(pct: int, stage: str) -> None:
+            self.progress.emit(int(pct))
+            self.stage.emit(stage)
+
+        try:
+            out = run_pyramid_stack(
+                input_paths=self._params["input_paths"],
+                output_path=self._params["output_path"],
+                pyramid_depth=self._params["pyramid_depth"],
+                guided_radius=self._params["guided_radius"],
+                drop_misaligned=self._params["drop_misaligned"],
+                progress_callback=on_progress,
+                cancel_check=self._cancel.is_set,
+            )
+        except Cancelled:
+            self.cancelled.emit()
+            return
+        except Exception as exc:  # noqa: BLE001 — we must surface any failure
+            self.failed.emit(f"{type(exc).__name__}: {exc}")
+            return
+        self.finished_ok.emit(out)
+
+
+class PyramidStacker(QObject):
+    """Qt-side wrapper around run_pyramid_stack.
+
+    Shape mirrors FocusStacker: progress / log / finished_ok / failed /
+    cancelled signals, with a log channel synthesised from the
+    worker's per-stage progress messages so the MainWindow's existing
+    log-panel wiring works unchanged.
+    """
+    progress = pyqtSignal(int)
+    log = pyqtSignal(str)
+    command_ready = pyqtSignal(str)
+    finished_ok = pyqtSignal(str)
+    failed = pyqtSignal(str)
+    cancelled = pyqtSignal()
+
+    def __init__(self, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._thread: QThread | None = None
+        self._worker: _PyramidWorker | None = None
+        self._cancel = threading.Event()
+
+    @property
+    def is_running(self) -> bool:
+        return self._thread is not None and self._thread.isRunning()
+
+    def stack(
+        self,
+        input_paths,
+        output_path: str,
+        *,
+        pyramid_depth: int | None,
+        guided_radius: int,
+        drop_misaligned: bool,
+    ) -> None:
+        if self.is_running:
+            self.failed.emit("Pyramid stacker already running.")
+            return
+        if not GUIDED_FILTER_AVAILABLE:
+            self.failed.emit(
+                "opencv-contrib-python-headless is required for the pyramid stacker "
+                "(cv2.ximgproc.guidedFilter is missing)."
+            )
+            return
+
+        self.command_ready.emit(
+            f"python -m stackant.pyramid_stacker --depth={pyramid_depth or 'auto'} "
+            f"--radius={guided_radius} --drop_misaligned={drop_misaligned} "
+            f"-> {output_path}"
+        )
+
+        self._cancel.clear()
+        params = {
+            "input_paths": list(input_paths),
+            "output_path": output_path,
+            "pyramid_depth": pyramid_depth,
+            "guided_radius": guided_radius,
+            "drop_misaligned": drop_misaligned,
+        }
+        self._thread = QThread(self)
+        self._worker = _PyramidWorker(params, self._cancel)
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+        self._worker.progress.connect(self.progress.emit)
+        self._worker.stage.connect(lambda s: self.log.emit(f"{s}"))
+        self._worker.finished_ok.connect(self._on_worker_done)
+        self._worker.failed.connect(self._on_worker_failed)
+        self._worker.cancelled.connect(self._on_worker_cancelled)
+        self._thread.start()
+
+    def cancel(self) -> None:
+        if self.is_running:
+            self._cancel.set()
+
+    def _cleanup_thread(self) -> None:
+        if self._thread is not None:
+            self._thread.quit()
+            self._thread.wait(3000)
+            self._thread.deleteLater()
+            self._thread = None
+            self._worker = None
+
+    def _on_worker_done(self, path: str) -> None:
+        self._cleanup_thread()
+        self.finished_ok.emit(path)
+
+    def _on_worker_failed(self, msg: str) -> None:
+        self._cleanup_thread()
+        self.failed.emit(msg)
+
+    def _on_worker_cancelled(self) -> None:
+        self._cleanup_thread()
+        self.cancelled.emit()
