@@ -5,6 +5,34 @@ All notable changes to this project will be documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] — Unreleased
+
+### Added
+
+- **Laplacian-pyramid stacking method** alongside `focus-stack`,
+  using guided-filter-smoothed sharpness weight maps per pyramid
+  level. Same algorithm family as Helicon Focus Method C and Zerene
+  PMax. Produces cleaner edges than `focus-stack`'s wavelet path on
+  hard contrast boundaries (legs, antennae against bright
+  backgrounds). Pure Python/NumPy/OpenCV, CPU-only.
+- **Method radio** (Pyramid / focus-stack / Auto) with Pyramid as
+  the default. Auto picks by stack size and resolution (≤50 frames
+  and longest edge ≤2048 → Pyramid, else focus-stack).
+- **Compare methods** button that runs both stackers on the current
+  frames and shows both outputs in the preview with a view toggle.
+- **Advanced panel** reorganised into method-specific sub-groups;
+  three new Pyramid tunables (depth, guided-filter radius, drop
+  misaligned frames).
+- Log panel prefixes lines with `[pyramid]` / `[focus-stack]`
+  during Compare runs.
+- Settings persist method + pyramid params across launches.
+
+### Changed
+
+- Dependency: `opencv-python-headless` →
+  `opencv-contrib-python-headless` (needed for
+  `cv2.ximgproc.guidedFilter`).
+
 ## [0.1.0] — 2026-04-23
 
 First functional release.

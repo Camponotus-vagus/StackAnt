@@ -13,13 +13,18 @@ Full roadmap is in `docs/PLAN.md`. Do not repeat it here.
 
 ## Current state
 
-- v0.1.0 tagged. 76 tests passing, ruff clean.
-- Focus-stack end-to-end pipeline verified on this machine with real
-  Uganda videos. OpenCL fails on Apollo Lake HD 500; `--no-opencl`
-  toggle is the workaround and is auto-hinted on OpenCL errors.
-- `docs/PLAN.md` is the original spec and roadmap; `CHANGELOG.md`
-  tracks shipped features plus v1.1 plans (batch mode, downscaling,
-  bundled distribution, Windows validation).
+- v0.1.0 shipped; v0.2.0 in progress on main.
+- Two stacking backends: `focus-stack` CLI (existing) and an
+  in-process Laplacian-pyramid implementation in
+  `stackant/pyramid_stacker.py` with a worker `QThread` and
+  guided-filter-smoothed sharpness weights.
+- Method radio in StackControls (Pyramid / focus-stack / Auto),
+  Compare button, Pyramid-specific Advanced sub-group, compare
+  view toggle in the preview panel. See
+  `docs/superpowers/specs/2026-04-23-pyramid-stacking-design.md`
+  for the full design and
+  `docs/superpowers/plans/2026-04-23-pyramid-stacking.md` for the
+  task-by-task plan.
 
 ## Layout
 
