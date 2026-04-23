@@ -28,6 +28,37 @@ class StackControls(QGroupBox):
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
 
+        from PyQt6.QtWidgets import QButtonGroup, QRadioButton
+
+        method_row = QVBoxLayout()
+        method_row.addWidget(QLabel("Method:"))
+        self._method_group = QButtonGroup(self)
+        self.rb_pyramid = QRadioButton("Pyramid")
+        self.rb_pyramid.setToolTip(
+            "Laplacian-pyramid fusion with guided-filter smoothing.\n"
+            "Slower, better edges (cleaner on legs/antennae).\n"
+            "Same family as Helicon Method C and Zerene PMax."
+        )
+        self.rb_focus_stack = QRadioButton("focus-stack")
+        self.rb_focus_stack.setToolTip(
+            "Complex-wavelet fusion via the focus-stack CLI.\n"
+            "Faster, GPU-accelerated when available.\n"
+            "Slightly more halo-prone at hard contrast edges."
+        )
+        self.rb_auto = QRadioButton("Auto")
+        self.rb_auto.setToolTip(
+            "Picks per image: Pyramid for small stacks (≤50 frames at ≤2K),\n"
+            "focus-stack otherwise. For quality-critical work, use Compare."
+        )
+        self._method_group.addButton(self.rb_pyramid, 0)
+        self._method_group.addButton(self.rb_focus_stack, 1)
+        self._method_group.addButton(self.rb_auto, 2)
+        self.rb_pyramid.setChecked(True)
+        method_row.addWidget(self.rb_pyramid)
+        method_row.addWidget(self.rb_focus_stack)
+        method_row.addWidget(self.rb_auto)
+        layout.addLayout(method_row)
+
         btn_row = QHBoxLayout()
         self.btn_stack = QPushButton("Stack Frames")
         self.btn_cancel = QPushButton("Cancel")
@@ -109,6 +140,21 @@ class StackControls(QGroupBox):
     def _toggle_advanced(self, on: bool) -> None:
         self.advanced_box.setVisible(on)
         self.btn_advanced.setText("Advanced options ▴" if on else "Advanced options ▾")
+
+    def method(self) -> str:
+        if self.rb_focus_stack.isChecked():
+            return "focus-stack"
+        if self.rb_auto.isChecked():
+            return "auto"
+        return "pyramid"
+
+    def set_method(self, method: str) -> None:
+        if method == "focus-stack":
+            self.rb_focus_stack.setChecked(True)
+        elif method == "auto":
+            self.rb_auto.setChecked(True)
+        else:
+            self.rb_pyramid.setChecked(True)
 
     def set_ready(self, ready: bool) -> None:
         self._ready = ready
