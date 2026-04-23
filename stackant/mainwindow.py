@@ -1,4 +1,4 @@
-"""Main application window — wires Controls, Filmstrip, Preview, FrameExtractor."""
+"""Main application window — wires controls, filter, filmstrip, preview, subprocesses."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -20,6 +20,12 @@ from . import config, tempfiles
 from .dependency_checker import ToolStatus
 from .folder_loader import list_images
 from .frame_extractor import FrameExtractor
+from .frame_filter import (
+    FilterState,
+    auto_threshold,
+    score_frames,
+    suggested_decimation_target,
+)
 from .widgets.controls import ControlsPanel
 from .widgets.filmstrip import Filmstrip
 
@@ -49,11 +55,12 @@ class MainWindow(QMainWindow):
     def __init__(self, tool_statuses: Sequence[ToolStatus] | None = None):
         super().__init__()
         self.setWindowTitle(config.APP_NAME)
-        self.resize(1240, 760)
+        self.resize(1280, 780)
 
         self._tool_statuses = tool_statuses
         self._extractor = FrameExtractor(self)
         self._current_temp_dir: Path | None = None
+        self._filter_state: FilterState | None = None
 
         self._build_ui()
         self._wire_signals()
@@ -74,7 +81,7 @@ class MainWindow(QMainWindow):
         splitter.addWidget(self.controls)
         splitter.addWidget(self.filmstrip)
         splitter.addWidget(self.preview_panel)
-        splitter.setSizes([300, 500, 440])
+        splitter.setSizes([320, 500, 460])
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
         splitter.setStretchFactor(2, 1)
@@ -93,12 +100,23 @@ class MainWindow(QMainWindow):
         self.controls.extract_requested.connect(self._on_extract_requested)
         self.controls.cancel_requested.connect(self._extractor.cancel)
 
+        fc = self.controls.filter_controls
+        fc.threshold_changed.connect(self._on_threshold_changed)
+        fc.decimation_changed.connect(self._on_decimation_changed)
+        fc.auto_threshold_requested.connect(self._on_auto_threshold)
+
+        self.filmstrip.toggle_requested.connect(self._on_frame_toggled)
+
         self._extractor.progress.connect(self.progress.setValue)
         self._extractor.finished_ok.connect(self._on_extraction_done)
         self._extractor.failed.connect(self._on_extraction_failed)
 
+    # ---- input handling --------------------------------------------------
+
     def _on_video_selected(self, path: str) -> None:
         self.filmstrip.clear()
+        self._filter_state = None
+        self.controls.filter_controls.setEnabled(False)
         self.statusBar().showMessage(f"Loaded video: {Path(path).name}", 4000)
 
     def _on_folder_selected(self, path: str) -> None:
@@ -110,8 +128,9 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Loading {len(frames)} thumbnails…")
         self.filmstrip.load_frames(frames)
         self.statusBar().showMessage(
-            f"Loaded {len(frames)} frames from {Path(path).name}.", 4000
+            f"Loaded {len(frames)} frames. Scoring…"
         )
+        self._run_scoring(frames)
 
     def _on_extract_requested(self, decimation: int) -> None:
         video_path = self.controls.input_path
@@ -126,19 +145,87 @@ class MainWindow(QMainWindow):
             video_path, str(self._current_temp_dir), decimation=decimation
         )
 
+    # ---- extraction pipeline ---------------------------------------------
+
     def _on_extraction_done(self, frames: list) -> None:
         self.progress.setVisible(False)
         self.controls.set_busy(False)
-        self.statusBar().showMessage(f"Extracted {len(frames)} frames. Generating thumbnails…")
+        self.statusBar().showMessage(
+            f"Extracted {len(frames)} frames. Generating thumbnails…"
+        )
         self.filmstrip.load_frames(frames)
-        self.statusBar().showMessage(f"Ready. {len(frames)} frames extracted.", 6000)
+        self.statusBar().showMessage(f"Scoring {len(frames)} frames…")
+        self._run_scoring(frames)
 
     def _on_extraction_failed(self, msg: str) -> None:
         self.progress.setVisible(False)
         self.controls.set_busy(False)
-        # Keep the message persistent (no timeout) so the user can read it.
         first_line = msg.splitlines()[0] if msg else "Extraction failed."
         self.statusBar().showMessage(f"Extraction failed: {first_line}")
+
+    # ---- filtering -------------------------------------------------------
+
+    def _run_scoring(self, frames: list[str]) -> None:
+        scored = score_frames(frames)
+        scores = [s.laplacian_var for s in scored]
+        target = suggested_decimation_target(len(scores))
+        threshold = auto_threshold(scores)
+        self._filter_state = FilterState(
+            scores=scores,
+            threshold=threshold,
+            decimation_target=target if target < len(scores) else None,
+        )
+
+        fc = self.controls.filter_controls
+        fc.setEnabled(True)
+        fc.configure_range(min(scores), max(scores) if scores else 1.0)
+        fc.set_threshold(threshold)
+        if self._filter_state.decimation_target:
+            fc.chk_decimate.setChecked(True)
+            fc.spn_decimation_target.setValue(self._filter_state.decimation_target)
+        else:
+            fc.chk_decimate.setChecked(False)
+
+        self._refresh_filter_view()
+
+    def _refresh_filter_view(self) -> None:
+        if self._filter_state is None:
+            return
+        mask = self._filter_state.kept_mask()
+        self.filmstrip.apply_mask(mask)
+        kept, total = self._filter_state.counts()
+        self.controls.filter_controls.set_counts(kept, total)
+        self.statusBar().showMessage(f"{kept} / {total} frames kept.", 4000)
+
+    def _on_threshold_changed(self, value: float) -> None:
+        if self._filter_state is None:
+            return
+        self._filter_state.threshold = value
+        self._refresh_filter_view()
+
+    def _on_decimation_changed(self, target: int) -> None:
+        if self._filter_state is None:
+            return
+        self._filter_state.decimation_target = target if target > 0 else None
+        self._refresh_filter_view()
+
+    def _on_auto_threshold(self) -> None:
+        if self._filter_state is None:
+            return
+        value = auto_threshold(self._filter_state.scores)
+        self._filter_state.threshold = value
+        self.controls.filter_controls.set_threshold(value)
+        self._refresh_filter_view()
+
+    def _on_frame_toggled(self, index: int) -> None:
+        if self._filter_state is None:
+            return
+        current_mask = self._filter_state.kept_mask()
+        if 0 <= index < len(current_mask):
+            self._filter_state.manual_overrides[index] = not current_mask[index]
+            self._refresh_filter_view()
+
+    # ---- status bar ------------------------------------------------------
 
     def _show_tool_statuses(self, statuses: Sequence[ToolStatus] | None) -> None:
         if not statuses:

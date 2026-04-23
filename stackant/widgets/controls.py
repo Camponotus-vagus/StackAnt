@@ -16,6 +16,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from .filter_controls import FilterControls
+
 
 class ControlsPanel(QFrame):
     video_selected = pyqtSignal(str)
@@ -70,6 +72,9 @@ class ControlsPanel(QFrame):
         btn_row.addWidget(self.btn_cancel)
         eb.addLayout(btn_row)
         layout.addWidget(self.extract_box)
+
+        self.filter_controls = FilterControls()
+        layout.addWidget(self.filter_controls)
 
         layout.addStretch(1)
 
