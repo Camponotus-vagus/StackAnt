@@ -13,14 +13,13 @@ Full roadmap is in `docs/PLAN.md`. Do not repeat it here.
 
 ## Current state
 
-- All 8 sessions complete, 29 unit tests passing, ruff clean.
-- Focus-stack end-to-end pipeline verified on this machine with a real
-  Uganda video (51 frames extracted at decimation=30, 40 kept after
-  filtering, ~52 s CPU stack, 3.1 MB TIFF + 561 KB JPEG export).
-- OpenCL is broken on this GPU; `--no-opencl` is surfaced as an
-  Advanced panel toggle and a status-bar hint on OpenCL errors.
-- `docs/PLAN.md` has the original spec; `CHANGELOG.md` tracks shipped
-  features.
+- v0.1.0 tagged. 76 tests passing, ruff clean.
+- Focus-stack end-to-end pipeline verified on this machine with real
+  Uganda videos. OpenCL fails on Apollo Lake HD 500; `--no-opencl`
+  toggle is the workaround and is auto-hinted on OpenCL errors.
+- `docs/PLAN.md` is the original spec and roadmap; `CHANGELOG.md`
+  tracks shipped features plus v1.1 plans (batch mode, downscaling,
+  bundled distribution, Windows validation).
 
 ## Layout
 

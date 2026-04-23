@@ -5,7 +5,7 @@ All notable changes to this project will be documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] — Unreleased
+## [0.1.0] — 2026-04-23
 
 First functional release.
 
@@ -49,5 +49,20 @@ First functional release.
   both separately.
 - Windows testing is unverified on the v0.1.0 dev machine (Linux Mint);
   the code is written to be portable but bug reports welcome.
-- Single-file processing only; batch mode is planned for a later
-  release.
+- Single-file processing only — batch mode is planned for v1.1.
+- On very weak integrated GPUs (e.g. Intel Apollo Lake HD 500),
+  `focus-stack`'s OpenCL kernels exhaust shared local memory and crash;
+  the "Disable OpenCL (GPU)" toggle in Advanced is the workaround.
+
+## Roadmap
+
+### [1.1] — planned
+
+- **Batch processing:** queue multiple videos, dial in settings once,
+  run the whole extract → score → filter → stack → export pipeline on
+  each in sequence with per-video + overall progress.
+- Optional input downscaling to make GPU stacking viable on
+  memory-constrained integrated GPUs.
+- Bundled distribution (PyInstaller or similar) so end users don't
+  need a Python toolchain.
+- Windows end-to-end validation.

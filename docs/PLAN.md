@@ -87,11 +87,26 @@ PREVIEW_MAX_PX = 800
 
 ## Out of Scope (v1.0)
 
-- Bundled ffmpeg / focus-stack binaries
-- Batch processing of multiple videos
+- Bundled ffmpeg / focus-stack binaries  →  roadmap v1.1
+- Batch processing of multiple videos     →  roadmap v1.1
+- Optional input downscaling for memory-constrained iGPUs → roadmap v1.1
 - RAW image support
 - 3D / anaglyph output
 - Cloud sync or remote processing
+
+## Roadmap
+
+### v1.1
+
+- Batch queue: "Add videos…" → "Run Batch" runs the full pipeline on
+  each queued video using the currently-dialed-in settings (shared
+  filter threshold policy, stacker params, export format). Per-video
+  auto-threshold only — no manual per-frame toggling in batch mode.
+  Failures don't abort the queue.
+- Optional "Downscale inputs to N px" toggle in Advanced so focus-stack's
+  OpenCL kernels fit on weak integrated GPUs.
+- Bundled distribution so end users don't need a Python toolchain.
+- Windows end-to-end validation.
 
 ## Rules for Development
 

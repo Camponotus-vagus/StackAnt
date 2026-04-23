@@ -112,6 +112,20 @@ The codebase is split cleanly between pure-logic modules (frame_filter,
 stacker, exporter, frame_extractor command building) and Qt UI widgets,
 so most logic has non-Qt tests.
 
+## Roadmap
+
+Planned for v1.1:
+
+- **Batch processing** — queue multiple videos and run the full
+  pipeline on each with the currently-dialed-in settings.
+- **Optional input downscaling** so `focus-stack`'s OpenCL kernels fit
+  on memory-constrained integrated GPUs.
+- **Bundled distribution** (e.g. PyInstaller) so end users don't need a
+  Python toolchain.
+- **Windows** end-to-end validation.
+
+See `CHANGELOG.md` for details.
+
 ## Contributing
 
 Bug reports and pull requests welcome. Please include the contents of
