@@ -102,3 +102,28 @@ def test_fuse_prefers_sharp_over_blurred():
     midpoint = (sml_sharp + sml_blurred) / 2
     assert sml_fused > midpoint, \
         f"Fused sharpness {sml_fused:.4f} should be above midpoint {midpoint:.4f}"
+
+
+from stackant.pyramid_stacker import align_to_reference
+
+
+def test_align_to_reference_identity_is_near_identity():
+    rng = np.random.default_rng(0)
+    ref = rng.random((64, 64), dtype=np.float32)
+    aligned, warp, ok = align_to_reference(ref, ref.copy())
+    assert ok
+    assert warp.shape == (2, 3)
+    assert np.allclose(aligned, ref, atol=1e-3)
+
+
+def test_align_to_reference_recovers_small_translation():
+    rng = np.random.default_rng(1)
+    ref = rng.random((128, 128), dtype=np.float32)
+    # Shift by (2, 3) pixels.
+    M = np.float32([[1, 0, 2], [0, 1, 3]])
+    shifted = cv2.warpAffine(ref, M, (128, 128))
+    aligned, warp, ok = align_to_reference(ref, shifted)
+    assert ok
+    # Central region should match the reference closely after alignment.
+    err = np.abs(aligned[10:-10, 10:-10] - ref[10:-10, 10:-10]).mean()
+    assert err < 0.1

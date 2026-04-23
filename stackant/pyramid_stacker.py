@@ -167,3 +167,39 @@ def fuse_images(
         fused_levels.append(fused)
 
     return collapse_laplacian_pyramid(fused_levels)
+
+
+_ECC_CRITERIA = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 100, 1e-4)
+
+
+def align_to_reference(
+    reference: np.ndarray,
+    moving: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, bool]:
+    """Align `moving` to `reference` using ECC with affine motion.
+
+    Both inputs must be 2-D float32 (grayscale). Returns the
+    warped moving image, the 2x3 affine warp matrix, and a success
+    flag. On ECC failure the original moving image is returned with
+    the identity warp and ok=False.
+    """
+    if reference.shape != moving.shape:
+        raise ValueError("reference and moving must share shape")
+    warp = np.eye(2, 3, dtype=np.float32)
+    try:
+        _, warp = cv2.findTransformECC(
+            templateImage=reference,
+            inputImage=moving,
+            warpMatrix=warp,
+            motionType=cv2.MOTION_AFFINE,
+            criteria=_ECC_CRITERIA,
+            inputMask=None,
+            gaussFiltSize=5,
+        )
+    except cv2.error:
+        return moving, np.eye(2, 3, dtype=np.float32), False
+    h, w = reference.shape
+    aligned = cv2.warpAffine(
+        moving, warp, (w, h), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP
+    )
+    return aligned, warp, True
