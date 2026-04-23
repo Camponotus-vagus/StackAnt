@@ -1,0 +1,50 @@
+"""Laplacian-pyramid focus stacker.
+
+Pure-Python implementation of the algorithm family used by Helicon
+Focus Method C and Zerene Stacker PMax: Laplacian pyramid fusion with
+guided-filter-smoothed sharpness weight maps. Addresses halos at hard
+contrast edges that the wavelet-based focus-stack CLI (our default
+backend) is prone to on macro entomology subjects.
+
+Design tenets:
+- All helpers operate on float32 arrays in [0, 1] for numerical
+  stability during pyramid collapse.
+- Input/output to/from disk is uint8 BGR (OpenCV convention) and the
+  caller takes care of the conversion.
+- Progress and cancellation are driven from the caller (see
+  run_pyramid_stack + PyramidStacker below).
+"""
+from __future__ import annotations
+
+import cv2
+import numpy as np
+
+
+def build_laplacian_pyramid(
+    image: np.ndarray, levels: int
+) -> list[np.ndarray]:
+    """Return [L_0, L_1, ..., L_{levels-2}, G_{levels-1}].
+
+    L_k = G_k - pyrUp(G_{k+1}) cropped to G_k's shape. The last
+    entry is the coarsest Gaussian, which the collapse step seeds
+    with.
+    """
+    gauss = [image.astype(np.float32)]
+    for _ in range(levels - 1):
+        gauss.append(cv2.pyrDown(gauss[-1]))
+    pyramid: list[np.ndarray] = []
+    for k in range(levels - 1):
+        up = cv2.pyrUp(gauss[k + 1], dstsize=(gauss[k].shape[1], gauss[k].shape[0]))
+        pyramid.append(gauss[k] - up)
+    pyramid.append(gauss[-1])
+    return pyramid
+
+
+def collapse_laplacian_pyramid(pyramid: list[np.ndarray]) -> np.ndarray:
+    """Collapse a Laplacian pyramid back to full resolution."""
+    current = pyramid[-1]
+    for k in range(len(pyramid) - 2, -1, -1):
+        target = pyramid[k]
+        up = cv2.pyrUp(current, dstsize=(target.shape[1], target.shape[0]))
+        current = up + target
+    return current
