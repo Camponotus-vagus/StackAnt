@@ -70,7 +70,7 @@ README with screenshot, pinned requirements, CHANGELOG v0.1.0, tag v0.1.0.
 | Subprocess handling | QProcess        | Non-blocking, integrates with Qt event loop                 |
 | Frame format        | TIFF (internal) | Avoid double-lossy from video compression                   |
 | Config persistence  | QSettings       | Cross-platform, no extra dependency                         |
-| Bundling            | Not in v1.0     | Added in v1.1 after core is stable                          |
+| Bundling            | Not in v0.1.0   | Added in v0.5 after the algorithm work lands                |
 
 ## Default Parameters (config.py)
 
@@ -85,28 +85,50 @@ JPEG_DEFAULT_QUALITY = 95
 PREVIEW_MAX_PX = 800
 ```
 
-## Out of Scope (v1.0)
+## Out of Scope (v0.1)
 
-- Bundled ffmpeg / focus-stack binaries  →  roadmap v1.1
-- Batch processing of multiple videos     →  roadmap v1.1
-- Optional input downscaling for memory-constrained iGPUs → roadmap v1.1
-- RAW image support
-- 3D / anaglyph output
-- Cloud sync or remote processing
+- Second stacking algorithm (Laplacian pyramid)  → v0.2
+- Batch processing of multiple videos            → v0.3
+- Input downscaling for memory-constrained iGPUs → v0.4
+- Reproducibility manifest on export             → v0.4
+- Bundled ffmpeg / focus-stack binaries          → v0.5
+- RAW image support                              → out, no plan
+- 3D / anaglyph output                           → out, no plan
+- Cloud sync or remote processing                → out, no plan
 
 ## Roadmap
 
-### v1.1
+### v0.2 — Laplacian-pyramid stacking
 
-- Batch queue: "Add videos…" → "Run Batch" runs the full pipeline on
-  each queued video using the currently-dialed-in settings (shared
-  filter threshold policy, stacker params, export format). Per-video
-  auto-threshold only — no manual per-frame toggling in batch mode.
-  Failures don't abort the queue.
-- Optional "Downscale inputs to N px" toggle in Advanced so focus-stack's
-  OpenCL kernels fit on weak integrated GPUs.
-- Bundled distribution so end users don't need a Python toolchain.
+Second in-process stacking backend alongside `focus-stack`, using
+guided-filter-smoothed sharpness weight maps per pyramid level. Same
+algorithm family as Helicon Focus Method C and Zerene PMax. Motivation:
+cleaner edges on hard contrast boundaries (legs, antennae against
+bright backgrounds) — the main documented weakness of `focus-stack`'s
+wavelet approach.
+
+### v0.3 — Batch processing
+
+Queue multiple videos, dial in settings once, run extract → score →
+filter → stack → export on each in sequence. Per-video auto-threshold
+only. Failures don't abort the queue.
+
+### v0.4 — Polish
+
+- Optional "Downscale inputs to N px" in the stack Advanced panel so
+  `focus-stack`'s OpenCL kernels fit on weak integrated GPUs.
+- Reproducibility manifest on export (JSON sidecar listing kept frame
+  paths, Laplacian scores, subprocess commands, tool versions).
 - Windows end-to-end validation.
+
+### v0.5 — Bundled distribution
+
+PyInstaller (or similar) so end users don't need a Python toolchain.
+
+### v1.0 — Stable
+
+Declared once the above are all shipped and verified on Linux and
+Windows without caveats.
 
 ## Rules for Development
 

@@ -33,6 +33,25 @@ focus — all without manually picking and stacking frames.
 - Export to TIFF (lossless) and/or JPEG (quality 60–100).
 - Keyboard shortcuts, persistent settings, cancellable subprocesses.
 
+## Why StackAnt?
+
+Two things StackAnt does that Helicon Focus and Zerene Stacker don't:
+
+- **Video-first.** A manual-focus-pull video is often the fastest way
+  to capture a specimen — in the field, or at a microscope whose stock
+  software doesn't ship with focus-stacking (or where it's a paid
+  add-on). StackAnt takes the video directly and extracts frames for
+  you. Commercial stackers expect you to arrive with *N*
+  already-separated image files.
+- **Automatic frame-quality filtering.** Transition frames where the
+  lens is still sliding are motion-blurred and useless. StackAnt
+  scores each frame's Laplacian variance on ingest and rejects the
+  bottom tail automatically, with a live slider for override. Other
+  stackers require manual pre-culling.
+
+It's also free and open-source (MIT), and the log panel records every
+subprocess command so any run is reproducible.
+
 ## Requirements
 
 - **Python 3.10 or newer** (tested on 3.12).
@@ -119,15 +138,19 @@ so most logic has non-Qt tests.
 
 ## Roadmap
 
-Planned for v1.1:
-
-- **Batch processing** — queue multiple videos and run the full
-  pipeline on each with the currently-dialed-in settings.
-- **Optional input downscaling** so `focus-stack`'s OpenCL kernels fit
-  on memory-constrained integrated GPUs.
-- **Bundled distribution** (e.g. PyInstaller) so end users don't need a
-  Python toolchain.
-- **Windows** end-to-end validation.
+- **v0.2 — Laplacian-pyramid fusion:** a pure-Python stacking method
+  alongside `focus-stack`, targeting cleaner edges on hard contrast
+  boundaries (legs, antennae against sky). Same algorithm family
+  commercial tools (Helicon "Method C", Zerene "PMax") use.
+- **v0.3 — Batch processing:** queue multiple videos, dial in settings
+  once, run the full pipeline on each in sequence.
+- **v0.4 — Polish:** optional input downscaling for
+  memory-constrained integrated GPUs, reproducibility manifest on
+  export, Windows end-to-end validation.
+- **v0.5 — Bundled installers** so end users don't need a Python
+  toolchain.
+- **v1.0 — Stable release** once everything above is shipped and
+  verified without caveats.
 
 See `CHANGELOG.md` for details.
 

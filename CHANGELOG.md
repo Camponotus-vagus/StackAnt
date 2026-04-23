@@ -56,13 +56,35 @@ First functional release.
 
 ## Roadmap
 
-### [1.1] — planned
+### [0.2] — planned
+
+- **Laplacian-pyramid stacking:** second in-process backend alongside
+  `focus-stack`, using guided-filter-smoothed sharpness weight maps
+  per pyramid level. Same algorithm family as Helicon Focus Method C
+  and Zerene PMax. Targets cleaner edges on hard contrast boundaries
+  (legs, antennae against bright backgrounds) — the main documented
+  weakness of `focus-stack`'s wavelet approach.
+
+### [0.3] — planned
 
 - **Batch processing:** queue multiple videos, dial in settings once,
   run the whole extract → score → filter → stack → export pipeline on
   each in sequence with per-video + overall progress.
+
+### [0.4] — planned
+
 - Optional input downscaling to make GPU stacking viable on
   memory-constrained integrated GPUs.
+- Reproducibility manifest on export (JSON sidecar listing kept frame
+  paths, Laplacian scores, subprocess commands, tool versions).
+- Windows end-to-end validation.
+
+### [0.5] — planned
+
 - Bundled distribution (PyInstaller or similar) so end users don't
   need a Python toolchain.
-- Windows end-to-end validation.
+
+### [1.0] — stable
+
+- Declared once the milestones above are shipped and verified on
+  Linux and Windows without caveats.
