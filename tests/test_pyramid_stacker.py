@@ -55,3 +55,28 @@ def test_sml_is_higher_on_noisy_than_smooth_image():
 def test_sml_preserves_shape():
     img = np.zeros((37, 53), dtype=np.float32)
     assert compute_sml(img).shape == (37, 53)
+
+
+from stackant.pyramid_stacker import smooth_weights
+
+
+def test_smooth_weights_preserves_shape_and_range():
+    rng = np.random.default_rng(0)
+    weights = rng.random((64, 64), dtype=np.float32)
+    guide = (rng.random((64, 64, 3), dtype=np.float32))
+    smoothed = smooth_weights(weights, guide, radius=8)
+    assert smoothed.shape == (64, 64)
+    # Guided filter output is ~bounded by the input's range.
+    assert smoothed.min() >= -0.01
+    assert smoothed.max() <= 1.01
+
+
+def test_smooth_weights_is_actually_smoothed():
+    rng = np.random.default_rng(1)
+    impulse = np.zeros((64, 64), dtype=np.float32)
+    impulse[32, 32] = 1.0
+    guide = np.full((64, 64, 3), 0.5, dtype=np.float32)
+    smoothed = smooth_weights(impulse, guide, radius=8)
+    # An isolated 1-pixel impulse must spread out.
+    assert smoothed[32, 32] < 0.5
+    assert smoothed[32:34, 32:34].sum() > 0.01  # mass spread into neighborhood

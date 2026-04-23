@@ -70,3 +70,38 @@ def compute_sml(gray: np.ndarray) -> np.ndarray:
     ml = ddx + ddy
     # Box-filter summation across the window.
     return cv2.boxFilter(ml, cv2.CV_32F, (_SML_WINDOW, _SML_WINDOW), normalize=False)
+
+
+try:
+    from cv2 import ximgproc as _ximgproc
+    GUIDED_FILTER_AVAILABLE = True
+except ImportError:  # opencv-python (non-contrib) was installed
+    _ximgproc = None
+    GUIDED_FILTER_AVAILABLE = False
+
+
+def smooth_weights(
+    weights: np.ndarray,
+    guide: np.ndarray,
+    radius: int = 8,
+    eps: float = 1e-4,
+) -> np.ndarray:
+    """Edge-preserving smoothing of a sharpness/weight map.
+
+    This is the step that distinguishes Helicon C / Zerene PMax
+    quality from a naive max-pixel pyramid — without guided-filter
+    smoothing the raw sharpness map creates speckle and blocking.
+
+    Raises ImportError if opencv-contrib is not installed — caller
+    should gate on `GUIDED_FILTER_AVAILABLE` before calling.
+    """
+    if _ximgproc is None:
+        raise ImportError(
+            "cv2.ximgproc not available — install opencv-contrib-python-headless"
+        )
+    return _ximgproc.guidedFilter(
+        guide=guide.astype(np.float32),
+        src=weights.astype(np.float32),
+        radius=int(radius),
+        eps=float(eps),
+    )
