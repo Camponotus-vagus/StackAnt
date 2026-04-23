@@ -7,6 +7,7 @@ from typing import Sequence
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QMainWindow,
+    QMessageBox,
     QProgressBar,
     QSplitter,
     QStatusBar,
@@ -16,6 +17,7 @@ from PyQt6.QtWidgets import (
 
 from . import config, tempfiles
 from .dependency_checker import ToolStatus
+from .exporter import export_jpeg, export_tiff, reveal_in_file_manager
 from .folder_loader import list_images
 from .frame_extractor import FrameExtractor
 from .frame_filter import (
@@ -100,6 +102,8 @@ class MainWindow(QMainWindow):
         self.filmstrip.currentItemChanged.connect(self._on_filmstrip_selection_changed)
 
         self.preview_panel.restack_requested.connect(self._on_stack_requested)
+
+        self.controls.export_controls.export_requested.connect(self._on_export_requested)
 
         self._extractor.progress.connect(self.progress.setValue)
         self._extractor.log.connect(self.log_panel.append)
@@ -266,6 +270,9 @@ class MainWindow(QMainWindow):
         self.controls.stack_controls.set_running(False)
         self.statusBar().showMessage(f"Stack complete: {Path(output_path).name}", 8000)
         self.preview_panel.show_stacked(output_path)
+        self.controls.export_controls.setEnabled(True)
+        if self.controls.input_path:
+            self.controls.export_controls.prefill_for_input(self.controls.input_path)
 
     def _on_stack_failed(self, msg: str) -> None:
         self.progress.setVisible(False)
@@ -273,6 +280,56 @@ class MainWindow(QMainWindow):
         first_line = msg.splitlines()[0] if msg else "Stack failed."
         self.statusBar().showMessage(f"Stack failed: {first_line}")
         self.log_panel.append(msg)
+
+    # ---- export ----------------------------------------------------------
+
+    def _on_export_requested(self) -> None:
+        stacked = self._stacked_output
+        if not stacked or not Path(stacked).is_file():
+            self.statusBar().showMessage("Nothing to export — stack a result first.")
+            return
+        s = self.controls.export_controls.settings()
+        if not s["folder"]:
+            self.statusBar().showMessage("Please pick an output folder.")
+            return
+        if not (s["tiff"] or s["jpeg"]):
+            self.statusBar().showMessage("Select at least one output format (TIFF or JPEG).")
+            return
+
+        folder = Path(s["folder"])
+        targets: list[Path] = []
+        if s["tiff"]:
+            targets.append(folder / f"{s['name']}.tif")
+        if s["jpeg"]:
+            targets.append(folder / f"{s['name']}.jpg")
+
+        existing = [t for t in targets if t.exists()]
+        if existing:
+            names = "\n  ".join(str(t.name) for t in existing)
+            reply = QMessageBox.question(
+                self,
+                "Overwrite?",
+                f"The following file(s) already exist in the output folder:\n  {names}\n\n"
+                "Overwrite them?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                self.statusBar().showMessage("Export cancelled.")
+                return
+
+        try:
+            if s["tiff"]:
+                export_tiff(stacked, str(folder / f"{s['name']}.tif"))
+            if s["jpeg"]:
+                export_jpeg(stacked, str(folder / f"{s['name']}.jpg"), quality=s["quality"])
+        except OSError as exc:
+            self.statusBar().showMessage(f"Export failed: {exc}")
+            return
+
+        written = ", ".join(t.name for t in targets)
+        self.statusBar().showMessage(f"Exported: {written}", 8000)
+        reveal_in_file_manager(str(folder))
 
     # ---- status bar ------------------------------------------------------
 
