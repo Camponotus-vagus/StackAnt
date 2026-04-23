@@ -1,3 +1,4 @@
+import cv2
 import numpy as np
 
 from stackant.pyramid_stacker import (
@@ -31,3 +32,26 @@ def test_collapse_recovers_the_original_within_tolerance():
     # are not exact inverses on odd dimensions.
     assert recovered.shape == img.shape
     assert np.abs(recovered - img).mean() < 0.01
+
+
+from stackant.pyramid_stacker import compute_sml
+
+
+def test_sml_is_zero_on_constant_image():
+    img = np.full((64, 64), 0.5, dtype=np.float32)
+    sml = compute_sml(img)
+    assert np.allclose(sml, 0.0, atol=1e-6)
+
+
+def test_sml_is_higher_on_noisy_than_smooth_image():
+    rng = np.random.default_rng(0)
+    noisy = rng.random((64, 64), dtype=np.float32)
+    smooth = cv2.GaussianBlur(noisy, (11, 11), 3)
+    sml_noisy = compute_sml(noisy).mean()
+    sml_smooth = compute_sml(smooth).mean()
+    assert sml_noisy > sml_smooth * 5  # order-of-magnitude separation
+
+
+def test_sml_preserves_shape():
+    img = np.zeros((37, 53), dtype=np.float32)
+    assert compute_sml(img).shape == (37, 53)

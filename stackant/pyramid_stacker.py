@@ -48,3 +48,25 @@ def collapse_laplacian_pyramid(pyramid: list[np.ndarray]) -> np.ndarray:
         up = cv2.pyrUp(current, dstsize=(target.shape[1], target.shape[0]))
         current = up + target
     return current
+
+
+# SML kernels: second derivatives along x and y.
+_SML_KERNEL_X = np.array([[-1.0, 2.0, -1.0]], dtype=np.float32)
+_SML_KERNEL_Y = _SML_KERNEL_X.T
+_SML_WINDOW = 7  # Summation window (odd).
+
+
+def compute_sml(gray: np.ndarray) -> np.ndarray:
+    """Sum-Modified-Laplacian sharpness map on a grayscale float image.
+
+    Returns an array of the same shape as `gray` where each pixel is
+    the sum (over a 7x7 window) of the absolute second derivative in
+    x plus the absolute second derivative in y.
+    """
+    if gray.ndim != 2:
+        raise ValueError("compute_sml expects a 2-D grayscale array")
+    ddx = np.abs(cv2.filter2D(gray, cv2.CV_32F, _SML_KERNEL_X))
+    ddy = np.abs(cv2.filter2D(gray, cv2.CV_32F, _SML_KERNEL_Y))
+    ml = ddx + ddy
+    # Box-filter summation across the window.
+    return cv2.boxFilter(ml, cv2.CV_32F, (_SML_WINDOW, _SML_WINDOW), normalize=False)
