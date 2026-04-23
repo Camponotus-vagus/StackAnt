@@ -607,6 +607,8 @@ class TestSettings:
         assert loaded["depth"] == 5
         assert loaded["guided_radius"] == 12
         assert loaded["drop_misaligned"] is False
+        # Restore defaults for downstream tests.
+        settings.save_pyramid_params(depth=-1, guided_radius=8, drop_misaligned=True)
 
     def test_save_load_method_roundtrip(self, win):
         from stackant import settings
@@ -616,6 +618,9 @@ class TestSettings:
         assert settings.load_method() == "pyramid"
         settings.save_method("auto")
         assert settings.load_method() == "auto"
+        # Restore default so ordering-sensitive tests (e.g. the MainWindow's
+        # default-method assertion) don't inherit polluted state.
+        settings.save_method("pyramid")
 
 
 class TestLogPanel:
@@ -633,3 +638,23 @@ class TestLogPanel:
         panel.append("plain line")
         text = panel.view.toPlainText()
         assert text.strip() == "plain line"
+
+
+class TestMethodPicker:
+    def test_default_method_is_pyramid(self, win):
+        assert win.controls.stack_controls.method() == "pyramid"
+
+    def test_set_method_switches_radio(self, win):
+        win.controls.stack_controls.set_method("focus-stack")
+        assert win.controls.stack_controls.method() == "focus-stack"
+        win.controls.stack_controls.set_method("auto")
+        assert win.controls.stack_controls.method() == "auto"
+        win.controls.stack_controls.set_method("pyramid")
+        assert win.controls.stack_controls.method() == "pyramid"
+
+    def test_compare_button_enabled_follows_ready(self, win):
+        sc = win.controls.stack_controls
+        sc.set_ready(False)
+        assert not sc.btn_compare.isEnabled()
+        sc.set_ready(True)
+        assert sc.btn_compare.isEnabled()
