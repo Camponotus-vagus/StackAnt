@@ -2,8 +2,10 @@
 # reproducible while still resolving on Python 3.10-3.12 — numpy 2.3+
 # requires 3.11+ so a hard pin on the very latest breaks 3.10.
 PyQt6==6.11.0
-# opencv-python-headless (not opencv-python): the non-headless wheel bundles
-# outdated Qt5 plugins that shadow PyQt6's and break GUI launch.
-opencv-python-headless==4.13.0.92
+# opencv-contrib-python-headless (not opencv-python): the non-headless
+# wheel bundles outdated Qt5 plugins that shadow PyQt6's and break
+# GUI launch; the contrib wheel adds cv2.ximgproc (guidedFilter)
+# required by the Pyramid stacker.
+opencv-contrib-python-headless==4.13.0.92
 Pillow==12.2.0
 numpy>=1.26,<3
