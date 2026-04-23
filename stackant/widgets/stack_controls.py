@@ -88,6 +88,14 @@ class StackControls(QGroupBox):
         row.addStretch(1)
         ab.addLayout(row)
 
+        self.chk_no_opencl = QCheckBox("Disable OpenCL (GPU) — use CPU only")
+        self.chk_no_opencl.setToolTip(
+            "Check this if stacking fails with a CL_OUT_OF_RESOURCES or similar\n"
+            "OpenCL error. Slower, but works on machines where the GPU driver\n"
+            "can't handle focus-stack's wavelet kernels."
+        )
+        ab.addWidget(self.chk_no_opencl)
+
         ab.addWidget(QLabel("Extra CLI flags (passed verbatim):"))
         self.txt_extra = QLineEdit()
         self.txt_extra.setPlaceholderText("e.g. --threads=4 --no-contrast")
@@ -108,10 +116,13 @@ class StackControls(QGroupBox):
         self.btn_cancel.setEnabled(running)
 
     def params(self) -> dict:
+        extra = self.txt_extra.text().strip()
+        if self.chk_no_opencl.isChecked() and "--no-opencl" not in extra:
+            extra = ("--no-opencl " + extra).strip()
         return {
             "consistency": self.spn_consistency.value(),
             "denoise": self.chk_denoise.isChecked(),
             "sharp_strength": self.spn_sharp.value(),
             "halo_radius": self.spn_halo.value() if self.chk_halo.isChecked() else None,
-            "extra_cli": self.txt_extra.text(),
+            "extra_cli": extra,
         }

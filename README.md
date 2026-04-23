@@ -49,8 +49,16 @@ with exact install instructions for your platform.
 sudo apt install ffmpeg libopencv-dev build-essential git
 git clone https://github.com/PetteriAimonen/focus-stack.git
 cd focus-stack && make
-sudo cp focus-stack /usr/local/bin/
+# Install to either a system path (needs sudo):
+sudo cp build/focus-stack /usr/local/bin/
+# …or to your user-local bin (no sudo, assumes ~/.local/bin is on PATH):
+mkdir -p ~/.local/bin && cp build/focus-stack ~/.local/bin/
 ```
+
+**Note on OpenCL:** on some machines `focus-stack` fails mid-run with a
+`CL_OUT_OF_RESOURCES` error from the GPU driver. If that happens, open
+the **Advanced** panel and check **Disable OpenCL (GPU)** — stacking
+falls back to CPU-only processing (slower but reliable).
 
 **Windows**
 

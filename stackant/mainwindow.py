@@ -145,6 +145,7 @@ class MainWindow(QMainWindow):
             sc.chk_halo.setChecked(True)
             sc.spn_halo.setValue(sp["halo_radius"])
         sc.txt_extra.setText(sp["extra_cli"])
+        sc.chk_no_opencl.setChecked(sp["no_opencl"])
 
     def _wire_signals(self) -> None:
         self.controls.video_selected.connect(self._on_video_selected)
@@ -341,7 +342,10 @@ class MainWindow(QMainWindow):
         self.progress.setVisible(False)
         self.controls.stack_controls.set_running(False)
         first_line = msg.splitlines()[0] if msg else "Stack failed."
-        self.statusBar().showMessage(f"Stack failed: {first_line}")
+        hint = ""
+        if "OpenCL" in msg or "CL_OUT_OF_RESOURCES" in msg:
+            hint = "  (Try Advanced → Disable OpenCL and re-stack.)"
+        self.statusBar().showMessage(f"Stack failed: {first_line}{hint}")
         self.log_panel.append(msg)
 
     # ---- export ----------------------------------------------------------
@@ -409,7 +413,10 @@ class MainWindow(QMainWindow):
             folder=ec["folder"], quality=ec["quality"],
             tiff=ec["tiff"], jpeg=ec["jpeg"],
         )
-        settings.save_stack_params(self.controls.stack_controls.params())
+        settings.save_stack_params(
+            self.controls.stack_controls.params(),
+            self.controls.stack_controls.chk_no_opencl.isChecked(),
+        )
         # tempfiles.cleanup_all registered via atexit
         super().closeEvent(event)
 

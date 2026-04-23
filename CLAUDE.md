@@ -14,10 +14,11 @@ Full roadmap is in `docs/PLAN.md`. Do not repeat it here.
 ## Current state
 
 - All 8 sessions complete, 29 unit tests passing, ruff clean.
-- Focus-stack end-to-end pipeline unverified on this machine: the binary
-  needs `sudo apt install libopencv-dev` + source build before real
-  stacking can be tested. The wrapper + UI were verified by asserting
-  graceful recovery when `focus-stack` is absent from PATH.
+- Focus-stack end-to-end pipeline verified on this machine with a real
+  Uganda video (51 frames extracted at decimation=30, 40 kept after
+  filtering, ~52 s CPU stack, 3.1 MB TIFF + 561 KB JPEG export).
+- OpenCL is broken on this GPU; `--no-opencl` is surfaced as an
+  Advanced panel toggle and a status-bar hint on OpenCL errors.
 - `docs/PLAN.md` has the original spec; `CHANGELOG.md` tracks shipped
   features.
 
@@ -76,9 +77,10 @@ invariant). Never narrate *what* the code does.
 ## Environment notes (this machine)
 
 - Linux Mint, Python 3.12.3, ffmpeg 6.1.1 (apt), git.
-- `focus-stack` is **not** in apt on this machine. When reaching Session 4,
-  build from source: https://github.com/PetteriAimonen/focus-stack
-  (clone → `make` → drop the binary in `/usr/local/bin` or add to PATH).
+- `focus-stack` 1.5 installed at `~/.local/bin/focus-stack` (built from
+  PetteriAimonen/focus-stack after `sudo apt install libopencv-dev`).
+  The binary lands at `build/focus-stack` — not the repo root — after
+  `make`.
 - Project-local venv at `.venv/` (gitignored). Activate before running.
 - System locale is Italian — subprocess error messages may be localised.
 - Dev escape hatch: `STACKANT_ALLOW_MISSING=focus-stack python main.py` lets

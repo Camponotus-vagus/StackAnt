@@ -45,7 +45,7 @@ def load_export_defaults() -> dict:
 
 # ---- stacker advanced params -----------------------------------------
 
-def save_stack_params(params: dict) -> None:
+def save_stack_params(params: dict, no_opencl: bool) -> None:
     s = _s()
     s.setValue("stack/consistency", int(params.get("consistency", config.FOCUS_STACK_CONSISTENCY)))
     s.setValue("stack/denoise", bool(params.get("denoise", config.FOCUS_STACK_DENOISE)))
@@ -53,6 +53,7 @@ def save_stack_params(params: dict) -> None:
     halo = params.get("halo_radius")
     s.setValue("stack/halo_radius", -1 if halo is None else int(halo))
     s.setValue("stack/extra_cli", params.get("extra_cli", "") or "")
+    s.setValue("stack/no_opencl", bool(no_opencl))
 
 
 def load_stack_params() -> dict:
@@ -64,4 +65,5 @@ def load_stack_params() -> dict:
         "sharp_strength": int(s.value("stack/sharp_strength", config.FOCUS_STACK_SHARP_STRENGTH)),
         "halo_radius": None if halo < 0 else halo,
         "extra_cli": s.value("stack/extra_cli", "", type=str),
+        "no_opencl": s.value("stack/no_opencl", False, type=bool),
     }

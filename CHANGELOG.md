@@ -38,6 +38,10 @@ First functional release.
   focus-stack advanced parameters.
 - Keyboard shortcuts: Ctrl+O (open video), Ctrl+Shift+O (open folder),
   Ctrl+E (export), Space (toggle current frame), Ctrl+Q (quit).
+- "Disable OpenCL (GPU)" toggle in the stacker's Advanced panel, for
+  systems where the OpenCL acceleration path crashes inside
+  `focus-stack`. A stack failure containing an OpenCL error also
+  surfaces a hint in the status bar.
 
 ### Known limitations
 
