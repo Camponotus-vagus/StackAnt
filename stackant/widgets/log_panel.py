@@ -1,7 +1,6 @@
 """Collapsible subprocess-output log panel."""
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QClipboard, QFont, QGuiApplication
 from PyQt6.QtWidgets import (
     QHBoxLayout,

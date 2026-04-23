@@ -1,4 +1,7 @@
-PyQt6>=6.7
-opencv-python>=4.10
-Pillow>=10.4
-numpy>=1.26
+# Runtime dependencies. Pinned to the versions verified during v0.1.0
+# development; newer patch releases are unlikely to break anything, but
+# narrow pinning keeps user reports reproducible.
+PyQt6==6.11.0
+opencv-python==4.13.0.92
+Pillow==12.2.0
+numpy==2.4.4

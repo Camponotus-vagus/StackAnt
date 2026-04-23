@@ -79,7 +79,9 @@ class PreviewPanel(QWidget):
 
         header_row = QHBoxLayout()
         self.lbl_mode = QLabel("Preview")
-        f = self.lbl_mode.font(); f.setBold(True); self.lbl_mode.setFont(f)
+        f = self.lbl_mode.font()
+        f.setBold(True)
+        self.lbl_mode.setFont(f)
         header_row.addWidget(self.lbl_mode)
         header_row.addStretch(1)
         self.btn_toggle = QPushButton("Show input frame")

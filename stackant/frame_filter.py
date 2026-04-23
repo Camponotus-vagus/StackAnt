@@ -9,7 +9,6 @@ Design note on the threshold:
 """
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 
 import cv2

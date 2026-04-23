@@ -13,8 +13,13 @@ Full roadmap is in `docs/PLAN.md`. Do not repeat it here.
 
 ## Current state
 
-- See `docs/PLAN.md` for the full 8-session plan and `TaskList` for progress.
-- Each session ends with a runnable app; never commit a half-built state.
+- All 8 sessions complete, 29 unit tests passing, ruff clean.
+- Focus-stack end-to-end pipeline unverified on this machine: the binary
+  needs `sudo apt install libopencv-dev` + source build before real
+  stacking can be tested. The wrapper + UI were verified by asserting
+  graceful recovery when `focus-stack` is absent from PATH.
+- `docs/PLAN.md` has the original spec; `CHANGELOG.md` tracks shipped
+  features.
 
 ## Layout
 
