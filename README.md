@@ -8,8 +8,10 @@ single publication-ready composite in which the whole specimen is in
 focus — all without manually picking and stacking frames.
 
 <p align="center">
-  <img src="assets/icon.png" width="128" alt="StackAnt icon" />
+  <img src="assets/screenshot.png" alt="StackAnt in action — filmstrip on the left, stacked ant specimen with crop detail on the right" />
 </p>
+
+<p align="center"><em>Pictured: a Ugandan ant specimen, stacked from a single manual-focus-pull video.</em></p>
 
 ## Features
 
