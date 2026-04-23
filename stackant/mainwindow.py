@@ -94,25 +94,25 @@ class MainWindow(QMainWindow):
         mb = self.menuBar()
         m_file = mb.addMenu("&File")
 
-        act_open_video = QAction("Open &Video…", self)
-        act_open_video.setShortcut(QKeySequence.StandardKey.Open)
-        act_open_video.setStatusTip("Open a manual-focus-pull video for frame extraction")
-        act_open_video.triggered.connect(self.controls._pick_video)
-        m_file.addAction(act_open_video)
+        self.act_open_video = QAction("Open &Video…", self)
+        self.act_open_video.setShortcut(QKeySequence.StandardKey.Open)
+        self.act_open_video.setStatusTip("Open a manual-focus-pull video for frame extraction")
+        self.act_open_video.triggered.connect(self.controls._pick_video)
+        m_file.addAction(self.act_open_video)
 
-        act_open_folder = QAction("Open Image &Folder…", self)
-        act_open_folder.setShortcut("Ctrl+Shift+O")
-        act_open_folder.setStatusTip("Load an existing folder of already-extracted frames")
-        act_open_folder.triggered.connect(self.controls._pick_folder)
-        m_file.addAction(act_open_folder)
+        self.act_open_folder = QAction("Open Image &Folder…", self)
+        self.act_open_folder.setShortcut("Ctrl+Shift+O")
+        self.act_open_folder.setStatusTip("Load an existing folder of already-extracted frames")
+        self.act_open_folder.triggered.connect(self.controls._pick_folder)
+        m_file.addAction(self.act_open_folder)
 
         m_file.addSeparator()
 
-        act_export = QAction("&Export stacked image…", self)
-        act_export.setShortcut("Ctrl+E")
-        act_export.setStatusTip("Export the stacked result to TIFF and/or JPEG")
-        act_export.triggered.connect(self._on_export_requested)
-        m_file.addAction(act_export)
+        self.act_export = QAction("&Export stacked image…", self)
+        self.act_export.setShortcut("Ctrl+E")
+        self.act_export.setStatusTip("Export the stacked result to TIFF and/or JPEG")
+        self.act_export.triggered.connect(self._on_export_requested)
+        m_file.addAction(self.act_export)
 
         m_file.addSeparator()
 
@@ -120,6 +120,12 @@ class MainWindow(QMainWindow):
         act_quit.setShortcut(QKeySequence.StandardKey.Quit)
         act_quit.triggered.connect(self.close)
         m_file.addAction(act_quit)
+
+    def _set_busy(self, busy: bool) -> None:
+        """Toggle controls + File menu together so there's one source of truth."""
+        self.controls.set_busy(busy)
+        self.act_open_video.setEnabled(not busy)
+        self.act_open_folder.setEnabled(not busy)
 
     def _apply_saved_defaults(self) -> None:
         geom, state = settings.load_window_state()
@@ -173,6 +179,7 @@ class MainWindow(QMainWindow):
         self._extractor.log.connect(self.log_panel.append)
         self._extractor.finished_ok.connect(self._on_extraction_done)
         self._extractor.failed.connect(self._on_extraction_failed)
+        self._extractor.cancelled.connect(self._on_extraction_cancelled)
 
         self._stacker.progress.connect(self.progress.setValue)
         self._stacker.log.connect(self.log_panel.append)
@@ -181,27 +188,37 @@ class MainWindow(QMainWindow):
         )
         self._stacker.finished_ok.connect(self._on_stack_done)
         self._stacker.failed.connect(self._on_stack_failed)
+        self._stacker.cancelled.connect(self._on_stack_cancelled)
 
     # ---- input handling --------------------------------------------------
 
-    def _on_video_selected(self, path: str) -> None:
+    def _reset_pipeline_state(self) -> None:
+        """Drop everything that belongs to the previous input.
+
+        Called on new video/folder load so stale stacked output doesn't
+        linger behind a fresh input.
+        """
         self.filmstrip.clear()
         self._filter_state = None
+        self._stacked_output = None
+        self._current_temp_dir = None
         self.preview_panel.clear()
         self.controls.filter_controls.setEnabled(False)
         self.controls.stack_controls.set_ready(False)
+        self.controls.export_controls.setEnabled(False)
+
+    def _on_video_selected(self, path: str) -> None:
+        self._reset_pipeline_state()
         self.statusBar().showMessage(f"Loaded video: {Path(path).name}", 4000)
 
     def _on_folder_selected(self, path: str) -> None:
-        self.preview_panel.clear()
+        self._reset_pipeline_state()
         frames = list_images(path)
         if not frames:
             self.statusBar().showMessage("No images found in folder.", 5000)
-            self.filmstrip.clear()
             return
-        self.statusBar().showMessage(f"Loading {len(frames)} thumbnails…")
+        self.statusBar().showMessage(f"Loading {len(frames)} frames for scoring…")
         self.filmstrip.load_frames(frames)
-        self.statusBar().showMessage(f"Loaded {len(frames)} frames. Scoring…")
         self._run_scoring(frames)
 
     def _on_extract_requested(self, decimation: int) -> None:
@@ -211,7 +228,7 @@ class MainWindow(QMainWindow):
         self._current_temp_dir = tempfiles.make_temp_dir()
         self.progress.setVisible(True)
         self.progress.setValue(0)
-        self.controls.set_busy(True)
+        self._set_busy(True)
         self.statusBar().showMessage("Extracting frames with ffmpeg…")
         self._extractor.extract(
             video_path, str(self._current_temp_dir), decimation=decimation
@@ -221,19 +238,26 @@ class MainWindow(QMainWindow):
 
     def _on_extraction_done(self, frames: list) -> None:
         self.progress.setVisible(False)
-        self.controls.set_busy(False)
+        self._set_busy(False)
         self.statusBar().showMessage(
-            f"Extracted {len(frames)} frames. Generating thumbnails…"
+            f"Extracted {len(frames)} frames. Loading thumbnails and scoring…"
         )
         self.filmstrip.load_frames(frames)
-        self.statusBar().showMessage(f"Scoring {len(frames)} frames…")
         self._run_scoring(frames)
 
     def _on_extraction_failed(self, msg: str) -> None:
         self.progress.setVisible(False)
-        self.controls.set_busy(False)
+        self._set_busy(False)
         first_line = msg.splitlines()[0] if msg else "Extraction failed."
-        self.statusBar().showMessage(f"Extraction failed: {first_line}")
+        self.log_panel.append(msg)
+        self.statusBar().showMessage(
+            f"Extraction failed: {first_line}  (See log panel for details.)"
+        )
+
+    def _on_extraction_cancelled(self) -> None:
+        self.progress.setVisible(False)
+        self._set_busy(False)
+        self.statusBar().showMessage("Extraction cancelled.", 4000)
 
     # ---- filtering -------------------------------------------------------
 
@@ -250,7 +274,7 @@ class MainWindow(QMainWindow):
 
         fc = self.controls.filter_controls
         fc.setEnabled(True)
-        fc.configure_range(min(scores), max(scores) if scores else 1.0)
+        fc.configure_range(min(scores, default=0.0), max(scores, default=1.0))
         fc.set_threshold(threshold)
         if self._filter_state.decimation_target:
             fc.chk_decimate.setChecked(True)
@@ -326,12 +350,21 @@ class MainWindow(QMainWindow):
         self.progress.setVisible(True)
         self.progress.setValue(0)
         self.controls.stack_controls.set_running(True)
+        # Lock input switching while the stack runs
+        self.act_open_video.setEnabled(False)
+        self.act_open_folder.setEnabled(False)
         self.statusBar().showMessage(f"Stacking {len(kept)} frames…")
         self._stacker.stack(kept, output, **self.controls.stack_controls.params())
 
-    def _on_stack_done(self, output_path: str) -> None:
+    def _finish_stacking_ui(self) -> None:
+        """Shared UI-reset after a stack completes, fails, or is cancelled."""
         self.progress.setVisible(False)
         self.controls.stack_controls.set_running(False)
+        self.act_open_video.setEnabled(True)
+        self.act_open_folder.setEnabled(True)
+
+    def _on_stack_done(self, output_path: str) -> None:
+        self._finish_stacking_ui()
         self.statusBar().showMessage(f"Stack complete: {Path(output_path).name}", 8000)
         self.preview_panel.show_stacked(output_path)
         self.controls.export_controls.setEnabled(True)
@@ -339,14 +372,17 @@ class MainWindow(QMainWindow):
             self.controls.export_controls.prefill_for_input(self.controls.input_path)
 
     def _on_stack_failed(self, msg: str) -> None:
-        self.progress.setVisible(False)
-        self.controls.stack_controls.set_running(False)
+        self._finish_stacking_ui()
         first_line = msg.splitlines()[0] if msg else "Stack failed."
-        hint = ""
+        hint = "  (See log panel for details.)"
         if "OpenCL" in msg or "CL_OUT_OF_RESOURCES" in msg:
             hint = "  (Try Advanced → Disable OpenCL and re-stack.)"
         self.statusBar().showMessage(f"Stack failed: {first_line}{hint}")
         self.log_panel.append(msg)
+
+    def _on_stack_cancelled(self) -> None:
+        self._finish_stacking_ui()
+        self.statusBar().showMessage("Stacking cancelled.", 4000)
 
     # ---- export ----------------------------------------------------------
 
@@ -413,9 +449,14 @@ class MainWindow(QMainWindow):
             folder=ec["folder"], quality=ec["quality"],
             tiff=ec["tiff"], jpeg=ec["jpeg"],
         )
+        sc = self.controls.stack_controls
         settings.save_stack_params(
-            self.controls.stack_controls.params(),
-            self.controls.stack_controls.chk_no_opencl.isChecked(),
+            consistency=sc.spn_consistency.value(),
+            denoise=sc.chk_denoise.isChecked(),
+            sharp_strength=sc.spn_sharp.value(),
+            halo_radius=sc.spn_halo.value() if sc.chk_halo.isChecked() else None,
+            extra_cli=sc.txt_extra.text().strip(),
+            no_opencl=sc.chk_no_opencl.isChecked(),
         )
         # tempfiles.cleanup_all registered via atexit
         super().closeEvent(event)

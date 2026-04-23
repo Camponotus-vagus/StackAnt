@@ -20,6 +20,8 @@ class StackControls(QGroupBox):
 
     def __init__(self, parent=None):
         super().__init__("Focus stacking", parent)
+        self._ready: bool = False
+        self._running: bool = False
         self._build_ui()
         self.set_ready(False)
 
@@ -109,11 +111,14 @@ class StackControls(QGroupBox):
         self.btn_advanced.setText("Advanced options ▴" if on else "Advanced options ▾")
 
     def set_ready(self, ready: bool) -> None:
-        self.btn_stack.setEnabled(ready and not self.btn_cancel.isEnabled())
+        self._ready = ready
+        self.btn_stack.setEnabled(ready and not self._running)
 
     def set_running(self, running: bool) -> None:
-        self.btn_stack.setEnabled(not running)
+        self._running = running
         self.btn_cancel.setEnabled(running)
+        # Stack is only clickable when we have frames AND nothing is running.
+        self.btn_stack.setEnabled(self._ready and not running)
 
     def params(self) -> dict:
         extra = self.txt_extra.text().strip()

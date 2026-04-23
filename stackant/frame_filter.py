@@ -102,7 +102,7 @@ class FilterState:
             if 0 <= i < n:
                 mask[i] = forced
 
-        if self.decimation_target and self.decimation_target > 0:
+        if self.decimation_target is not None and self.decimation_target > 0:
             forced_in = {i for i, v in self.manual_overrides.items() if v}
             forced_out = {i for i, v in self.manual_overrides.items() if not v}
             kept_auto = [

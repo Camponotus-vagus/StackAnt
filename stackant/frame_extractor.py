@@ -69,6 +69,7 @@ class FrameExtractor(QObject):
     log = pyqtSignal(str)                # raw stderr lines
     finished_ok = pyqtSignal(list)       # list[str] — sorted output paths
     failed = pyqtSignal(str)             # human-readable error
+    cancelled = pyqtSignal()             # user-initiated cancel completed
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -76,6 +77,7 @@ class FrameExtractor(QObject):
         self._out_dir: Path | None = None
         self._expected_frames: int | None = None
         self._stderr_tail: bytearray = bytearray()
+        self._cancelled: bool = False
 
     @property
     def is_running(self) -> bool:
@@ -95,6 +97,7 @@ class FrameExtractor(QObject):
         self._out_dir = Path(out_dir)
         self._out_dir.mkdir(parents=True, exist_ok=True)
         self._stderr_tail = bytearray()
+        self._cancelled = False
 
         total = probe_frame_count(video_path)
         if total and decimation > 1:
@@ -117,6 +120,7 @@ class FrameExtractor(QObject):
 
     def cancel(self) -> None:
         if self._proc is not None:
+            self._cancelled = True
             self._proc.kill()
 
     def _on_stderr(self) -> None:
@@ -141,6 +145,10 @@ class FrameExtractor(QObject):
         self._proc = None
         if proc is None:
             return
+        if self._cancelled:
+            self._cancelled = False
+            self.cancelled.emit()
+            return
         if exit_code != 0:
             tail = bytes(self._stderr_tail).decode(errors="replace")
             self.failed.emit(f"ffmpeg exited with code {exit_code}:\n{tail}")
@@ -155,6 +163,9 @@ class FrameExtractor(QObject):
 
     def _on_proc_error(self, _err) -> None:
         if self._proc is None:
+            return
+        if self._cancelled:
+            # _on_finished will handle the cancelled emission shortly.
             return
         err_str = self._proc.errorString()
         self.failed.emit(f"ffmpeg could not run: {err_str}")

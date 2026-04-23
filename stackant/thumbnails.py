@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from PIL import Image
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QImage, QPainter, QPixmap
+from PyQt6.QtGui import QColor, QFont, QImage, QPainter, QPixmap
 
 
 def make_thumbnail(path: str, max_edge: int = 120) -> QPixmap:
@@ -18,6 +18,20 @@ def make_thumbnail(path: str, max_edge: int = 120) -> QPixmap:
             data, img.width, img.height, img.width * 3, QImage.Format.Format_RGB888
         )
         return QPixmap.fromImage(qimg.copy())
+
+
+def make_placeholder_pixmap(size: int = 120) -> QPixmap:
+    """Solid-gray square with a '?' — used when a frame fails to decode."""
+    pm = QPixmap(size, size)
+    pm.fill(QColor(70, 70, 70))
+    painter = QPainter(pm)
+    painter.setPen(QColor(200, 200, 200))
+    font = QFont()
+    font.setPointSize(max(8, size // 4))
+    painter.setFont(font)
+    painter.drawText(pm.rect(), Qt.AlignmentFlag.AlignCenter, "?")
+    painter.end()
+    return pm
 
 
 def make_rejected_pixmap(base: QPixmap) -> QPixmap:

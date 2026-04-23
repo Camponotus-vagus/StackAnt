@@ -46,7 +46,7 @@ with exact install instructions for your platform.
 **Debian / Ubuntu / Linux Mint**
 
 ```bash
-sudo apt install ffmpeg libopencv-dev build-essential git
+sudo apt install ffmpeg libopencv-dev libxcb-cursor0 build-essential git
 git clone https://github.com/PetteriAimonen/focus-stack.git
 cd focus-stack && make
 # Install to either a system path (needs sudo):
@@ -54,6 +54,9 @@ sudo cp build/focus-stack /usr/local/bin/
 # …or to your user-local bin (no sudo, assumes ~/.local/bin is on PATH):
 mkdir -p ~/.local/bin && cp build/focus-stack ~/.local/bin/
 ```
+
+`libxcb-cursor0` is required by PyQt6 ≥ 6.5 on X11. Without it the app
+aborts at launch with "no Qt platform plugin could be initialized".
 
 **Note on OpenCL:** on some machines `focus-stack` fails mid-run with a
 `CL_OUT_OF_RESOURCES` error from the GPU driver. If that happens, open

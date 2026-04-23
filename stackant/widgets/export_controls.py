@@ -57,6 +57,10 @@ class ExportControls(QGroupBox):
         name_row.addWidget(QLabel("Name:"))
         self.txt_name = QLineEdit()
         self.txt_name.setPlaceholderText("output_stacked")
+        self.txt_name.setToolTip(
+            "File name without extension. The .tif and/or .jpg suffix is "
+            "appended automatically based on the selected formats."
+        )
         name_row.addWidget(self.txt_name, stretch=1)
         layout.addLayout(name_row)
 

@@ -2,6 +2,8 @@
 # development; newer patch releases are unlikely to break anything, but
 # narrow pinning keeps user reports reproducible.
 PyQt6==6.11.0
-opencv-python==4.13.0.92
+# opencv-python-headless (not opencv-python): the non-headless wheel bundles
+# outdated Qt5 plugins that shadow PyQt6's and break GUI launch.
+opencv-python-headless==4.13.0.92
 Pillow==12.2.0
 numpy==2.4.4

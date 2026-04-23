@@ -46,12 +46,14 @@ class FocusStacker(QObject):
     command_ready = pyqtSignal(str)      # the full command line before launch
     finished_ok = pyqtSignal(str)        # output path
     failed = pyqtSignal(str)             # human-readable error
+    cancelled = pyqtSignal()             # user-initiated cancel completed
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._proc: QProcess | None = None
         self._output_path: str | None = None
         self._log_tail = bytearray()
+        self._cancelled: bool = False
 
     @property
     def is_running(self) -> bool:
@@ -75,6 +77,7 @@ class FocusStacker(QObject):
             self.failed.emit("No frames to stack.")
             return
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        self._cancelled = False
 
         args = build_focus_stack_args(
             input_frames, output_path,
@@ -98,6 +101,7 @@ class FocusStacker(QObject):
 
     def cancel(self) -> None:
         if self._proc is not None:
+            self._cancelled = True
             self._proc.kill()
 
     def _on_output(self) -> None:
@@ -121,6 +125,10 @@ class FocusStacker(QObject):
         self._proc = None
         if proc is None:
             return
+        if self._cancelled:
+            self._cancelled = False
+            self.cancelled.emit()
+            return
         if exit_code != 0:
             tail = bytes(self._log_tail).decode(errors="replace")
             self.failed.emit(
@@ -135,6 +143,8 @@ class FocusStacker(QObject):
 
     def _on_proc_error(self, _err) -> None:
         if self._proc is None:
+            return
+        if self._cancelled:
             return
         msg = self._proc.errorString()
         self.failed.emit(f"focus-stack could not run: {msg}")

@@ -5,7 +5,7 @@ from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QIcon, QKeyEvent
 from PyQt6.QtWidgets import QAbstractItemView, QListWidget, QListWidgetItem
 
-from ..thumbnails import make_rejected_pixmap, make_thumbnail
+from ..thumbnails import make_placeholder_pixmap, make_rejected_pixmap, make_thumbnail
 
 _THUMB_PX = 110
 _PATH_ROLE = Qt.ItemDataRole.UserRole
@@ -39,6 +39,13 @@ class Filmstrip(QListWidget):
         )
 
     def load_frames(self, paths: list[str]) -> None:
+        """Populate the filmstrip one-to-one with `paths`.
+
+        Frames whose thumbnail decode fails get a placeholder icon so the
+        filmstrip position stays aligned with the source frame index — the
+        rest of the pipeline (mask, decimation, stacker input) relies on
+        that 1:1 mapping.
+        """
         self.clear()
         self._base_pixmaps = []
         self._rejected_pixmaps = []
@@ -46,7 +53,7 @@ class Filmstrip(QListWidget):
             try:
                 pm = make_thumbnail(p, _THUMB_PX)
             except Exception:
-                continue
+                pm = make_placeholder_pixmap(_THUMB_PX)
             self._base_pixmaps.append(pm)
             self._rejected_pixmaps.append(make_rejected_pixmap(pm))
             item = QListWidgetItem(QIcon(pm), f"{i + 1}")
