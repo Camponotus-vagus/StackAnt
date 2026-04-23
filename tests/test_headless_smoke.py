@@ -616,3 +616,20 @@ class TestSettings:
         assert settings.load_method() == "pyramid"
         settings.save_method("auto")
         assert settings.load_method() == "auto"
+
+
+class TestLogPanel:
+    def test_append_tagged_prefixes_each_line(self, win):
+        panel = win.log_panel
+        panel._clear()   # use the internal clear to avoid toggling UI state
+        panel.append_tagged("pyramid", "first line\nsecond line")
+        text = panel.view.toPlainText()
+        assert "[pyramid] first line" in text
+        assert "[pyramid] second line" in text
+
+    def test_append_without_tag_is_unchanged(self, win):
+        panel = win.log_panel
+        panel._clear()
+        panel.append("plain line")
+        text = panel.view.toPlainText()
+        assert text.strip() == "plain line"

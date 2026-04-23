@@ -59,6 +59,13 @@ class LogPanel(QWidget):
         if text:
             self.view.appendPlainText(text)
 
+    def append_tagged(self, tag: str, text: str) -> None:
+        """Like append(), but prepends '[tag] ' to every line."""
+        prefix = f"[{tag}] "
+        for line in text.rstrip("\n").splitlines() or [""]:
+            if line:
+                self.view.appendPlainText(prefix + line)
+
     def _copy(self) -> None:
         clip = QGuiApplication.clipboard()
         if clip is not None:
