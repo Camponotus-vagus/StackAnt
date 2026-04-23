@@ -203,3 +203,132 @@ def align_to_reference(
         moving, warp, (w, h), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP
     )
     return aligned, warp, True
+
+
+import math
+from pathlib import Path
+from typing import Callable, Sequence
+
+
+def _auto_pyramid_depth(height: int, width: int) -> int:
+    return max(3, int(math.floor(math.log2(min(height, width)))) - 3)
+
+
+def _load_rgb_float(path: str) -> np.ndarray:
+    """Read an image from disk as float32 RGB in [0, 1]."""
+    bgr = cv2.imread(path, cv2.IMREAD_COLOR)
+    if bgr is None:
+        raise OSError(f"could not read image: {path}")
+    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+    return rgb.astype(np.float32) / 255.0
+
+
+def _save_rgb_float(path: str, image: np.ndarray) -> None:
+    arr = np.clip(image, 0.0, 1.0)
+    rgb = (arr * 255.0 + 0.5).astype(np.uint8)
+    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    if not cv2.imwrite(path, bgr):
+        raise OSError(f"could not write image: {path}")
+
+
+def run_pyramid_stack(
+    input_paths: Sequence[str],
+    output_path: str,
+    *,
+    pyramid_depth: int | None,
+    guided_radius: int,
+    drop_misaligned: bool,
+    progress_callback: Callable[[int, str], None] | None,
+    cancel_check: Callable[[], bool],
+) -> str:
+    """Run the full pyramid pipeline and write the result to `output_path`.
+
+    Arguments:
+        input_paths: ordered TIFF paths from the filmstrip.
+        output_path: destination TIFF.
+        pyramid_depth: override pyramid levels (None = auto).
+        guided_radius: guided-filter radius for weight smoothing.
+        drop_misaligned: if True, frames whose ECC alignment fails
+            are dropped with a log line rather than aborting.
+        progress_callback: called as (pct: int, stage: str).
+        cancel_check: returns True if the run was cancelled; the
+            function raises `Cancelled` at the next checkpoint.
+
+    Returns the output path on success.
+    """
+    if not input_paths:
+        raise ValueError("run_pyramid_stack: at least one input required")
+
+    def _progress(pct: int, stage: str) -> None:
+        if progress_callback is not None:
+            progress_callback(pct, stage)
+
+    def _check_cancel() -> None:
+        if cancel_check():
+            raise Cancelled()
+
+    _progress(0, "Loading frames")
+    images = [_load_rgb_float(p) for p in input_paths]
+    _check_cancel()
+
+    shape = images[0].shape
+    for p, im in zip(input_paths, images):
+        if im.shape != shape:
+            raise ValueError(
+                f"pyramid stacker requires same-shape inputs; {p} differs"
+            )
+
+    # Alignment: use the middle frame as the reference.
+    ref_idx = len(images) // 2
+    ref_gray = cv2.cvtColor(images[ref_idx], cv2.COLOR_RGB2GRAY)
+    aligned: list[np.ndarray] = []
+    dropped: list[int] = []
+    n = len(images)
+    h, w = ref_gray.shape
+    for i, im in enumerate(images):
+        _check_cancel()
+        if i == ref_idx:
+            aligned.append(im)
+        else:
+            gray = cv2.cvtColor(im, cv2.COLOR_RGB2GRAY)
+            _, warp, ok = align_to_reference(ref_gray, gray)
+            if ok:
+                warped_rgb = cv2.warpAffine(
+                    im, warp, (w, h),
+                    flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP,
+                )
+                aligned.append(warped_rgb)
+            elif drop_misaligned:
+                dropped.append(i)
+            else:
+                raise RuntimeError(
+                    f"ECC alignment failed for frame {i} and drop_misaligned is False"
+                )
+        _progress(int(5 + 20 * (i + 1) / n), "Aligning frames")
+
+    if not aligned:
+        raise RuntimeError(
+            f"All {n} frames failed ECC alignment. Subject may be moving."
+        )
+    if dropped:
+        _progress(25, f"Dropped {len(dropped)} misaligned frame(s)")
+
+    # Pyramid depth.
+    depth = pyramid_depth if pyramid_depth and pyramid_depth > 0 else _auto_pyramid_depth(
+        shape[0], shape[1]
+    )
+
+    _progress(30, "Building pyramids")
+    _check_cancel()
+    fused = fuse_images(aligned, levels=depth, guided_radius=guided_radius)
+    _check_cancel()
+
+    _progress(95, "Writing output")
+    _save_rgb_float(output_path, fused)
+    _progress(100, "Done")
+    return output_path
+
+
+class Cancelled(Exception):
+    """Raised inside run_pyramid_stack when the caller requests cancellation."""

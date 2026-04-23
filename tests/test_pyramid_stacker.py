@@ -127,3 +127,43 @@ def test_align_to_reference_recovers_small_translation():
     # Central region should match the reference closely after alignment.
     err = np.abs(aligned[10:-10, 10:-10] - ref[10:-10, 10:-10]).mean()
     assert err < 0.1
+
+
+import tempfile
+from pathlib import Path
+
+from PIL import Image
+
+from stackant.pyramid_stacker import run_pyramid_stack
+
+
+def _write_synth_frame(path: Path, blur_sigma: float, seed: int = 42):
+    rng = np.random.default_rng(seed)
+    arr = rng.integers(0, 255, size=(128, 128, 3), dtype=np.uint8)
+    if blur_sigma > 0:
+        ksize = max(3, int(blur_sigma * 4) | 1)
+        arr = cv2.GaussianBlur(arr, (ksize, ksize), blur_sigma)
+    Image.fromarray(arr).save(path, format="TIFF")
+
+
+def test_run_pyramid_stack_produces_readable_tiff(tmp_path):
+    paths = []
+    for i, sigma in enumerate([0.0, 2.0, 4.0]):
+        p = tmp_path / f"frame_{i:02d}.tif"
+        _write_synth_frame(p, sigma, seed=42 + i)
+        paths.append(str(p))
+    out = tmp_path / "stacked.tif"
+    result = run_pyramid_stack(
+        input_paths=paths,
+        output_path=str(out),
+        pyramid_depth=None,       # auto
+        guided_radius=8,
+        drop_misaligned=True,
+        progress_callback=None,
+        cancel_check=lambda: False,
+    )
+    assert result == str(out)
+    assert out.is_file()
+    # Output is a TIFF whose size matches the inputs.
+    with Image.open(out) as img:
+        assert img.size == (128, 128)
