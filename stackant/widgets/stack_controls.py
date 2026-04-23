@@ -89,6 +89,9 @@ class StackControls(QGroupBox):
         self.advanced_box.setFlat(True)
         ab = QVBoxLayout(self.advanced_box)
 
+        _fs_group = QGroupBox("focus-stack")
+        fs = QVBoxLayout(_fs_group)
+
         row = QHBoxLayout()
         row.addWidget(QLabel("Consistency (0–2):"))
         self.spn_consistency = QSpinBox()
@@ -100,11 +103,11 @@ class StackControls(QGroupBox):
         )
         row.addWidget(self.spn_consistency)
         row.addStretch(1)
-        ab.addLayout(row)
+        fs.addLayout(row)
 
         self.chk_denoise = QCheckBox("Denoise")
         self.chk_denoise.setChecked(True)
-        ab.addWidget(self.chk_denoise)
+        fs.addWidget(self.chk_denoise)
 
         row = QHBoxLayout()
         row.addWidget(QLabel("Sharpen strength (0–3):"))
@@ -113,7 +116,7 @@ class StackControls(QGroupBox):
         self.spn_sharp.setValue(1)
         row.addWidget(self.spn_sharp)
         row.addStretch(1)
-        ab.addLayout(row)
+        fs.addLayout(row)
 
         row = QHBoxLayout()
         self.chk_halo = QCheckBox("Halo radius:")
@@ -129,7 +132,7 @@ class StackControls(QGroupBox):
         row.addWidget(self.chk_halo)
         row.addWidget(self.spn_halo)
         row.addStretch(1)
-        ab.addLayout(row)
+        fs.addLayout(row)
 
         self.chk_no_opencl = QCheckBox("Disable OpenCL (GPU) — use CPU only")
         self.chk_no_opencl.setToolTip(
@@ -137,12 +140,55 @@ class StackControls(QGroupBox):
             "OpenCL error. Slower, but works on machines where the GPU driver\n"
             "can't handle focus-stack's wavelet kernels."
         )
-        ab.addWidget(self.chk_no_opencl)
+        fs.addWidget(self.chk_no_opencl)
 
-        ab.addWidget(QLabel("Extra CLI flags (passed verbatim):"))
+        fs.addWidget(QLabel("Extra CLI flags (passed verbatim):"))
         self.txt_extra = QLineEdit()
         self.txt_extra.setPlaceholderText("e.g. --threads=4 --no-contrast")
-        ab.addWidget(self.txt_extra)
+        fs.addWidget(self.txt_extra)
+
+        ab.addWidget(_fs_group)
+
+        py_group = QGroupBox("Pyramid")
+        py = QVBoxLayout(py_group)
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Pyramid depth:"))
+        self.spn_pyramid_depth = QSpinBox()
+        self.spn_pyramid_depth.setRange(0, 12)
+        self.spn_pyramid_depth.setSpecialValueText("auto")
+        self.spn_pyramid_depth.setValue(0)
+        self.spn_pyramid_depth.setToolTip(
+            "Number of Laplacian pyramid levels.\n"
+            "0 = auto (chosen from image dimensions)."
+        )
+        row.addWidget(self.spn_pyramid_depth)
+        row.addStretch(1)
+        py.addLayout(row)
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Guided-filter radius:"))
+        self.spn_guided_radius = QSpinBox()
+        self.spn_guided_radius.setRange(4, 32)
+        self.spn_guided_radius.setValue(8)
+        self.spn_guided_radius.setToolTip(
+            "Smoothing window for the sharpness weight map.\n"
+            "Higher = smoother transitions, fewer speckle artifacts,\n"
+            "slight risk of losing fine detail."
+        )
+        row.addWidget(self.spn_guided_radius)
+        row.addStretch(1)
+        py.addLayout(row)
+
+        self.chk_drop_misaligned = QCheckBox("Drop frames whose alignment fails")
+        self.chk_drop_misaligned.setChecked(True)
+        self.chk_drop_misaligned.setToolTip(
+            "On: misaligned frames are skipped with a log warning.\n"
+            "Off: any alignment failure aborts the whole run."
+        )
+        py.addWidget(self.chk_drop_misaligned)
+
+        ab.addWidget(py_group)
 
         layout.addWidget(self.advanced_box)
         self.advanced_box.setVisible(False)
@@ -177,6 +223,14 @@ class StackControls(QGroupBox):
         # Stack is only clickable when we have frames AND nothing is running.
         self.btn_stack.setEnabled(self._ready and not running)
         self.btn_compare.setEnabled(self._ready and not running)
+
+    def pyramid_params(self) -> dict:
+        depth = self.spn_pyramid_depth.value()
+        return {
+            "pyramid_depth": None if depth == 0 else depth,
+            "guided_radius": self.spn_guided_radius.value(),
+            "drop_misaligned": self.chk_drop_misaligned.isChecked(),
+        }
 
     def params(self) -> dict:
         extra = self.txt_extra.text().strip()
