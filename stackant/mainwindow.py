@@ -160,6 +160,11 @@ class MainWindow(QMainWindow):
             sc.spn_halo.setValue(sp["halo_radius"])
         sc.txt_extra.setText(sp["extra_cli"])
         sc.chk_no_opencl.setChecked(sp["no_opencl"])
+        sc.set_method(settings.load_method())
+        pp = settings.load_pyramid_params()
+        sc.spn_pyramid_depth.setValue(pp["depth"] if pp["depth"] > 0 else 0)
+        sc.spn_guided_radius.setValue(pp["guided_radius"])
+        sc.chk_drop_misaligned.setChecked(pp["drop_misaligned"])
 
     def _wire_signals(self) -> None:
         self.controls.video_selected.connect(self._on_video_selected)
@@ -385,16 +390,42 @@ class MainWindow(QMainWindow):
             return
         if self._current_temp_dir is None:
             self._current_temp_dir = tempfiles.make_temp_dir()
-        output = str(self._current_temp_dir / STACKED_FILENAME)
-        self._stacked_output = output
+
+        method_choice = self.controls.stack_controls.method()
+        if method_choice == "auto":
+            first = Path(kept[0])
+            # Use the first kept frame's dimensions as representative.
+            try:
+                from PIL import Image as _PIL
+                with _PIL.open(first) as _im:
+                    w, h = _im.size
+            except Exception:
+                w, h = 1920, 1080
+            method = choose_method(len(kept), w, h)
+            self.log_panel.append(
+                f"[auto] chose {method} for {len(kept)} frames at {w}x{h}"
+            )
+        else:
+            method = method_choice
+
         self.progress.setVisible(True)
         self.progress.setValue(0)
         self.controls.stack_controls.set_running(True)
-        # Lock input switching while the stack runs
         self.act_open_video.setEnabled(False)
         self.act_open_folder.setEnabled(False)
-        self.statusBar().showMessage(f"Stacking {len(kept)} frames…")
-        self._stacker.stack(kept, output, **self.controls.stack_controls.params())
+
+        if method == "pyramid":
+            output = str(self._current_temp_dir / "stacked_pyramid.tif")
+            self._stacked_output = output
+            self.statusBar().showMessage(f"Stacking {len(kept)} frames (Pyramid)…")
+            self._pyramid_stacker.stack(
+                kept, output, **self.controls.stack_controls.pyramid_params()
+            )
+        else:
+            output = str(self._current_temp_dir / "stacked_focus_stack.tif")
+            self._stacked_output = output
+            self.statusBar().showMessage(f"Stacking {len(kept)} frames (focus-stack)…")
+            self._stacker.stack(kept, output, **self.controls.stack_controls.params())
 
     def _finish_stacking_ui(self) -> None:
         """Shared UI-reset after a stack completes, fails, or is cancelled."""
@@ -538,6 +569,13 @@ class MainWindow(QMainWindow):
             halo_radius=sc.spn_halo.value() if sc.chk_halo.isChecked() else None,
             extra_cli=sc.txt_extra.text().strip(),
             no_opencl=sc.chk_no_opencl.isChecked(),
+        )
+        settings.save_method(sc.method())
+        pp = sc.pyramid_params()
+        settings.save_pyramid_params(
+            depth=pp["pyramid_depth"] if pp["pyramid_depth"] else -1,
+            guided_radius=pp["guided_radius"],
+            drop_misaligned=pp["drop_misaligned"],
         )
         # tempfiles.cleanup_all registered via atexit
         super().closeEvent(event)
