@@ -6,6 +6,7 @@ QProcess is reserved for the long-running workflow calls.
 """
 from __future__ import annotations
 
+import os
 import platform
 import shutil
 import subprocess
@@ -13,6 +14,7 @@ from dataclasses import dataclass
 from typing import Iterable
 
 REQUIRED_TOOLS: tuple[str, ...] = ("ffmpeg", "focus-stack")
+_ALLOW_MISSING_ENV = "STACKANT_ALLOW_MISSING"
 
 
 @dataclass(frozen=True)
@@ -78,8 +80,14 @@ def _install_hint(tool: str, system: str) -> str:
     return f"  • {tool}: install and add to PATH."
 
 
+def _allowed_missing() -> set[str]:
+    raw = os.environ.get(_ALLOW_MISSING_ENV, "")
+    return {s.strip() for s in raw.split(",") if s.strip()}
+
+
 def missing_deps_message(statuses: Iterable[ToolStatus]) -> str | None:
-    missing = [s.name for s in statuses if not s.present]
+    allowed = _allowed_missing()
+    missing = [s.name for s in statuses if not s.present and s.name not in allowed]
     if not missing:
         return None
     system = platform.system()

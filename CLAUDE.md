@@ -76,6 +76,9 @@ invariant). Never narrate *what* the code does.
   (clone → `make` → drop the binary in `/usr/local/bin` or add to PATH).
 - Project-local venv at `.venv/` (gitignored). Activate before running.
 - System locale is Italian — subprocess error messages may be localised.
+- Dev escape hatch: `STACKANT_ALLOW_MISSING=focus-stack python main.py` lets
+  the app launch without focus-stack installed (use during Sessions 2–3
+  while focus-stack is not yet built). Do not document this to end users.
 
 ## Running
 

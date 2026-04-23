@@ -1,4 +1,13 @@
+import os
+
+import pytest
+
 from stackant.dependency_checker import ToolStatus, missing_deps_message
+
+
+@pytest.fixture(autouse=True)
+def _no_allow_missing(monkeypatch):
+    monkeypatch.delenv("STACKANT_ALLOW_MISSING", raising=False)
 
 
 def test_all_present_returns_none():
@@ -28,3 +37,24 @@ def test_missing_ffmpeg_message_present():
     msg = missing_deps_message(statuses)
     assert msg is not None
     assert "ffmpeg" in msg
+
+
+def test_allow_missing_env_skips_block(monkeypatch):
+    monkeypatch.setenv("STACKANT_ALLOW_MISSING", "focus-stack")
+    statuses = [
+        ToolStatus("ffmpeg", "/usr/bin/ffmpeg", "v"),
+        ToolStatus("focus-stack", None, None),
+    ]
+    assert missing_deps_message(statuses) is None
+
+
+def test_allow_missing_env_still_blocks_ffmpeg(monkeypatch):
+    monkeypatch.setenv("STACKANT_ALLOW_MISSING", "focus-stack")
+    statuses = [
+        ToolStatus("ffmpeg", None, None),
+        ToolStatus("focus-stack", None, None),
+    ]
+    msg = missing_deps_message(statuses)
+    assert msg is not None
+    assert "ffmpeg" in msg
+    assert "focus-stack" not in msg
