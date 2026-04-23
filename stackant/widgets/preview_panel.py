@@ -64,6 +64,10 @@ class PreviewPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._stacked_path: str | None = None
+        self._stacked_paths: dict[str, str | None] = {
+            "pyramid": None, "focus-stack": None,
+        }
+        self._compare_view: str | None = None  # "pyramid" or "focus-stack" while comparing
         self._input_path: str | None = None
         self._current_mode: str = "stacked"  # or "input"
 
@@ -88,6 +92,13 @@ class PreviewPanel(QWidget):
         self.btn_toggle.clicked.connect(self._toggle_mode)
         self.btn_toggle.setEnabled(False)
         header_row.addWidget(self.btn_toggle)
+        self.btn_compare_view = QPushButton()
+        self.btn_compare_view.setVisible(False)
+        self.btn_compare_view.clicked.connect(self._cycle_compare_view)
+        self.btn_compare_view.setToolTip(
+            "Cycle between the two stacked outputs from Compare mode."
+        )
+        header_row.addWidget(self.btn_compare_view)
         root.addLayout(header_row)
 
         self.preview_label = _PreviewLabel()
@@ -151,6 +162,9 @@ class PreviewPanel(QWidget):
 
     def clear(self) -> None:
         self._stacked_path = None
+        self._stacked_paths = {"pyramid": None, "focus-stack": None}
+        self._compare_view = None
+        self.btn_compare_view.setVisible(False)
         self._input_path = None
         self._current_mode = "stacked"
         self._full_pixmap = None
@@ -247,3 +261,37 @@ class PreviewPanel(QWidget):
     def _reset_crop(self) -> None:
         self.preview_label.clear_rubber()
         self._clear_detail()
+
+    def set_compare_outputs(
+        self,
+        pyramid_path: str | None,
+        focus_stack_path: str | None,
+    ) -> None:
+        """Enter compare mode with one or both stacked outputs."""
+        self._stacked_paths["pyramid"] = pyramid_path
+        self._stacked_paths["focus-stack"] = focus_stack_path
+        first = "pyramid" if pyramid_path else "focus-stack"
+        self._compare_view = first
+        self._show_compare(first)
+        has_both = bool(pyramid_path and focus_stack_path)
+        self.btn_compare_view.setVisible(has_both)
+        self._update_compare_button_label()
+
+    def _show_compare(self, which: str) -> None:
+        path = self._stacked_paths[which]
+        if path:
+            self.show_stacked(path)
+
+    def _cycle_compare_view(self) -> None:
+        if self._compare_view == "pyramid":
+            self._compare_view = "focus-stack"
+        else:
+            self._compare_view = "pyramid"
+        self._show_compare(self._compare_view)
+        self._update_compare_button_label()
+
+    def _update_compare_button_label(self) -> None:
+        if self._compare_view is None:
+            return
+        current = "Pyramid" if self._compare_view == "pyramid" else "focus-stack"
+        self.btn_compare_view.setText(f"View: {current} ↻")
