@@ -29,6 +29,8 @@ from .frame_filter import (
     suggested_decimation_target,
 )
 from .stacker import FocusStacker
+from .pyramid_stacker import PyramidStacker
+from .stacking import choose_method
 from .widgets.controls import ControlsPanel
 from .widgets.filmstrip import Filmstrip
 from .widgets.log_panel import LogPanel
@@ -46,9 +48,14 @@ class MainWindow(QMainWindow):
         self._tool_statuses = tool_statuses
         self._extractor = FrameExtractor(self)
         self._stacker = FocusStacker(self)
+        self._pyramid_stacker = PyramidStacker(self)
         self._current_temp_dir: Path | None = None
         self._filter_state: FilterState | None = None
         self._stacked_output: str | None = None
+        self._compare_mode: bool = False
+        self._compare_outputs: dict[str, str | None] = {
+            "pyramid": None, "focus-stack": None,
+        }
 
         self._build_ui()
         self._build_menu()
@@ -190,6 +197,18 @@ class MainWindow(QMainWindow):
         self._stacker.finished_ok.connect(self._on_stack_done)
         self._stacker.failed.connect(self._on_stack_failed)
         self._stacker.cancelled.connect(self._on_stack_cancelled)
+
+        self._pyramid_stacker.progress.connect(self.progress.setValue)
+        self._pyramid_stacker.log.connect(self._on_pyramid_log)
+        self._pyramid_stacker.command_ready.connect(
+            lambda cmd: self.log_panel.append(f"\n$ {cmd}\n")
+        )
+        self._pyramid_stacker.finished_ok.connect(self._on_pyramid_done)
+        self._pyramid_stacker.failed.connect(self._on_pyramid_failed)
+        self._pyramid_stacker.cancelled.connect(self._on_pyramid_cancelled)
+
+        sc = self.controls.stack_controls
+        sc.compare_requested.connect(lambda *a: self._on_compare_requested(*a))
 
     # ---- input handling --------------------------------------------------
 
@@ -383,6 +402,47 @@ class MainWindow(QMainWindow):
         self.controls.stack_controls.set_running(False)
         self.act_open_video.setEnabled(True)
         self.act_open_folder.setEnabled(True)
+
+    def _on_pyramid_log(self, line: str) -> None:
+        if self._compare_mode:
+            self.log_panel.append_tagged("pyramid", line)
+        else:
+            self.log_panel.append(line)
+
+    def _on_pyramid_done(self, output_path: str) -> None:
+        self._finish_stacking_ui()
+        self.statusBar().showMessage(
+            f"Pyramid stack complete: {Path(output_path).name}", 8000
+        )
+        if self._compare_mode:
+            self._compare_outputs["pyramid"] = output_path
+            self._maybe_finish_compare()
+        else:
+            self._stacked_output = output_path
+            self.preview_panel.show_stacked(output_path)
+            self.controls.export_controls.setEnabled(True)
+            if self.controls.input_path:
+                self.controls.export_controls.prefill_for_input(self.controls.input_path)
+
+    def _on_pyramid_failed(self, msg: str) -> None:
+        self._finish_stacking_ui()
+        first_line = msg.splitlines()[0] if msg else "Pyramid stack failed."
+        self.statusBar().showMessage(
+            f"Pyramid failed: {first_line}  (See log panel for details.)"
+        )
+        self.log_panel.append(msg)
+        if self._compare_mode:
+            self._compare_outputs["pyramid"] = None
+            self._maybe_finish_compare()
+
+    def _on_pyramid_cancelled(self) -> None:
+        self._finish_stacking_ui()
+        self.statusBar().showMessage("Pyramid stacking cancelled.", 4000)
+        if self._compare_mode:
+            # User cancelled during the first half of Compare — abort the
+            # whole compare run without starting focus-stack.
+            self._compare_mode = False
+            self._compare_outputs = {"pyramid": None, "focus-stack": None}
 
     def _on_stack_done(self, output_path: str) -> None:
         self._finish_stacking_ui()
