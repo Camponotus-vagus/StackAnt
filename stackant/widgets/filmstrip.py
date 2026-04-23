@@ -19,7 +19,9 @@ class Filmstrip(QListWidget):
         super().__init__(parent)
         self.setViewMode(QListWidget.ViewMode.IconMode)
         self.setFlow(QListWidget.Flow.LeftToRight)
-        self.setWrapping(False)
+        # Wrap the thumbnails across rows so the panel's vertical space is used
+        # instead of forcing a single horizontal strip with scrollbar.
+        self.setWrapping(True)
         self.setIconSize(QSize(_THUMB_PX, _THUMB_PX))
         self.setGridSize(QSize(_THUMB_PX + 12, _THUMB_PX + 28))
         self.setMovement(QListWidget.Movement.Static)
@@ -27,8 +29,8 @@ class Filmstrip(QListWidget):
         self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.setSpacing(2)
         self.setUniformItemSizes(True)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
         self._base_pixmaps: list = []
         self._rejected_pixmaps: list = []
@@ -38,17 +40,19 @@ class Filmstrip(QListWidget):
             "Double-click or press Space to include/exclude a frame manually."
         )
 
-    def load_frames(self, paths: list[str]) -> None:
+    def load_frames(self, paths, progress_callback=None) -> None:
         """Populate the filmstrip one-to-one with `paths`.
 
         Frames whose thumbnail decode fails get a placeholder icon so the
         filmstrip position stays aligned with the source frame index — the
         rest of the pipeline (mask, decimation, stacker input) relies on
-        that 1:1 mapping.
+        that 1:1 mapping. `progress_callback(done, total)` runs after each
+        thumbnail is added so the caller can drive a progress bar.
         """
         self.clear()
         self._base_pixmaps = []
         self._rejected_pixmaps = []
+        total = len(paths)
         for i, p in enumerate(paths):
             try:
                 pm = make_thumbnail(p, _THUMB_PX)
@@ -60,6 +64,8 @@ class Filmstrip(QListWidget):
             item.setData(_PATH_ROLE, p)
             item.setData(_INDEX_ROLE, i)
             self.addItem(item)
+            if progress_callback is not None:
+                progress_callback(i + 1, total)
         if self.count():
             self.setCurrentRow(0)
 

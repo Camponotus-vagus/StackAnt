@@ -102,7 +102,12 @@ class PreviewPanel(QWidget):
         root.addWidget(preview_container, stretch=3)
 
         detail_header = QHBoxLayout()
-        detail_header.addWidget(QLabel("1:1 detail:"))
+        lbl_detail = QLabel("Crop detail:")
+        lbl_detail.setToolTip(
+            "Shows the selected rectangle at 1:1 pixel scale when it fits, "
+            "otherwise scales to fit the pane while preserving aspect."
+        )
+        detail_header.addWidget(lbl_detail)
         detail_header.addStretch(1)
         self.btn_reset_crop = QPushButton("Reset crop")
         self.btn_reset_crop.clicked.connect(self._reset_crop)
@@ -213,8 +218,19 @@ class PreviewPanel(QWidget):
         if full_rect.isEmpty():
             return
         crop = self._full_pixmap.copy(full_rect)
-        self.detail_label.setPixmap(crop)
-        self.detail_label.setFixedSize(crop.size())
+        viewport = self.detail_scroll.viewport().size()
+        # Show 1:1 when it fits; otherwise scale to fit aspect so the whole
+        # crop is visible without forcing the user to scroll.
+        if crop.width() <= viewport.width() and crop.height() <= viewport.height():
+            display = crop
+        else:
+            display = crop.scaled(
+                viewport,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        self.detail_label.setPixmap(display)
+        self.detail_label.setFixedSize(display.size())
         self.btn_reset_crop.setEnabled(True)
 
     def _on_crop_cleared(self) -> None:
@@ -222,7 +238,9 @@ class PreviewPanel(QWidget):
 
     def _clear_detail(self) -> None:
         self.detail_label.clear()
-        self.detail_label.setText("Draw a rectangle on the preview above to see it 1:1.")
+        self.detail_label.setText(
+            "Draw a rectangle on the preview above to inspect it."
+        )
         self.detail_label.setFixedSize(self.detail_scroll.viewport().size())
         self.btn_reset_crop.setEnabled(False)
 

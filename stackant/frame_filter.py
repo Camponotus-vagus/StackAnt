@@ -43,8 +43,15 @@ def score_image(path: str, max_edge: int = 512) -> float:
     return laplacian_variance(img)
 
 
-def score_frames(paths: list[str]) -> list[FrameScore]:
-    return [FrameScore(i, p, score_image(p)) for i, p in enumerate(paths)]
+def score_frames(paths, progress_callback=None) -> list[FrameScore]:
+    """Score each frame; `progress_callback(done, total)` is called after each."""
+    total = len(paths)
+    results: list[FrameScore] = []
+    for i, p in enumerate(paths):
+        results.append(FrameScore(i, p, score_image(p)))
+        if progress_callback is not None:
+            progress_callback(i + 1, total)
+    return results
 
 
 def auto_threshold(scores: list[float], k: float = 1.0) -> float:

@@ -7,6 +7,7 @@ from typing import Sequence
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction, QIcon, QKeySequence
 from PyQt6.QtWidgets import (
+    QApplication,
     QMainWindow,
     QMessageBox,
     QProgressBar,
@@ -217,9 +218,12 @@ class MainWindow(QMainWindow):
         if not frames:
             self.statusBar().showMessage("No images found in folder.", 5000)
             return
-        self.statusBar().showMessage(f"Loading {len(frames)} frames for scoring…")
-        self.filmstrip.load_frames(frames)
+        self.statusBar().showMessage(f"Loading {len(frames)} thumbnails…")
+        self.progress.setVisible(True)
+        self._drive_progress(0, 1)
+        self.filmstrip.load_frames(frames, progress_callback=self._drive_progress)
         self._run_scoring(frames)
+        self.progress.setVisible(False)
 
     def _on_extract_requested(self, decimation: int) -> None:
         video_path = self.controls.input_path
@@ -237,13 +241,15 @@ class MainWindow(QMainWindow):
     # ---- extraction pipeline ---------------------------------------------
 
     def _on_extraction_done(self, frames: list) -> None:
-        self.progress.setVisible(False)
         self._set_busy(False)
         self.statusBar().showMessage(
-            f"Extracted {len(frames)} frames. Loading thumbnails and scoring…"
+            f"Extracted {len(frames)} frames. Loading thumbnails…"
         )
-        self.filmstrip.load_frames(frames)
+        self.progress.setVisible(True)
+        self._drive_progress(0, 1)
+        self.filmstrip.load_frames(frames, progress_callback=self._drive_progress)
         self._run_scoring(frames)
+        self.progress.setVisible(False)
 
     def _on_extraction_failed(self, msg: str) -> None:
         self.progress.setVisible(False)
@@ -261,8 +267,23 @@ class MainWindow(QMainWindow):
 
     # ---- filtering -------------------------------------------------------
 
+    def _drive_progress(self, done: int, total: int) -> None:
+        """Update the progress bar synchronously and keep the UI responsive.
+
+        Used for in-thread workloads (thumbnail decode, Laplacian scoring)
+        where the natural Qt signal loop can't drive the bar.
+        """
+        if total <= 0:
+            self.progress.setValue(0)
+        else:
+            self.progress.setValue(min(100, int(done * 100 / total)))
+        QApplication.processEvents()
+
     def _run_scoring(self, frames: list[str]) -> None:
-        scored = score_frames(frames)
+        self.statusBar().showMessage(f"Scoring {len(frames)} frames…")
+        self.progress.setVisible(True)
+        self._drive_progress(0, 1)
+        scored = score_frames(frames, progress_callback=self._drive_progress)
         scores = [s.laplacian_var for s in scored]
         target = suggested_decimation_target(len(scores))
         threshold = auto_threshold(scores)
