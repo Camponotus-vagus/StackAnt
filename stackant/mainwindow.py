@@ -195,7 +195,7 @@ class MainWindow(QMainWindow):
         self._extractor.cancelled.connect(self._on_extraction_cancelled)
 
         self._stacker.progress.connect(self.progress.setValue)
-        self._stacker.log.connect(self.log_panel.append)
+        self._stacker.log.connect(self._on_focus_stack_log)
         self._stacker.command_ready.connect(
             lambda cmd: self.log_panel.append(f"\n$ {cmd}\n")
         )
@@ -213,7 +213,7 @@ class MainWindow(QMainWindow):
         self._pyramid_stacker.cancelled.connect(self._on_pyramid_cancelled)
 
         sc = self.controls.stack_controls
-        sc.compare_requested.connect(lambda *a: self._on_compare_requested(*a))
+        sc.compare_requested.connect(self._on_compare_requested)
 
     # ---- input handling --------------------------------------------------
 
@@ -440,6 +440,12 @@ class MainWindow(QMainWindow):
         else:
             self.log_panel.append(line)
 
+    def _on_focus_stack_log(self, line: str) -> None:
+        if self._compare_mode:
+            self.log_panel.append_tagged("focus-stack", line)
+        else:
+            self.log_panel.append(line)
+
     def _on_pyramid_done(self, output_path: str) -> None:
         self._finish_stacking_ui()
         self.statusBar().showMessage(
@@ -475,9 +481,66 @@ class MainWindow(QMainWindow):
             self._compare_mode = False
             self._compare_outputs = {"pyramid": None, "focus-stack": None}
 
+    def _on_compare_requested(self) -> None:
+        kept = self._kept_frame_paths()
+        if not kept:
+            self.statusBar().showMessage("No frames selected for Compare.")
+            return
+        if self._current_temp_dir is None:
+            self._current_temp_dir = tempfiles.make_temp_dir()
+
+        self._compare_mode = True
+        self._compare_outputs = {"pyramid": None, "focus-stack": None}
+
+        self.progress.setVisible(True)
+        self.progress.setValue(0)
+        self.controls.stack_controls.set_running(True)
+        self.act_open_video.setEnabled(False)
+        self.act_open_folder.setEnabled(False)
+
+        self.statusBar().showMessage(
+            f"Compare: running Pyramid on {len(kept)} frames…"
+        )
+        out = str(self._current_temp_dir / "stacked_pyramid.tif")
+        self._pyramid_stacker.stack(
+            kept, out, **self.controls.stack_controls.pyramid_params()
+        )
+
+    def _maybe_finish_compare(self) -> None:
+        """Called after pyramid completes during a Compare run.
+
+        If pyramid was the only step left, finalise; otherwise launch
+        focus-stack as the second stage.
+        """
+        if not self._compare_mode:
+            return
+        if self._compare_outputs["pyramid"] is None and self._compare_outputs["focus-stack"] is None:
+            # Pyramid failed; launch focus-stack anyway.
+            self._launch_focus_stack_compare()
+        elif self._compare_outputs["pyramid"] is not None and self._compare_outputs["focus-stack"] is None:
+            self._launch_focus_stack_compare()
+        else:
+            self._finalise_compare()
+
+    def _launch_focus_stack_compare(self) -> None:
+        kept = self._kept_frame_paths()
+        assert self._current_temp_dir is not None
+        out = str(self._current_temp_dir / "stacked_focus_stack.tif")
+        self.statusBar().showMessage(
+            f"Compare: running focus-stack on {len(kept)} frames…"
+        )
+        self.progress.setValue(0)
+        self.controls.stack_controls.set_running(True)
+        self._stacker.stack(kept, out, **self.controls.stack_controls.params())
+
     def _on_stack_done(self, output_path: str) -> None:
         self._finish_stacking_ui()
         self.statusBar().showMessage(f"Stack complete: {Path(output_path).name}", 8000)
+        if self._compare_mode:
+            self._compare_outputs["focus-stack"] = output_path
+            self._finalise_compare()
+            return
+        self._stacked_output = output_path
         self.preview_panel.show_stacked(output_path)
         self.controls.export_controls.setEnabled(True)
         if self.controls.input_path:
@@ -490,11 +553,48 @@ class MainWindow(QMainWindow):
         if "OpenCL" in msg or "CL_OUT_OF_RESOURCES" in msg:
             hint = "  (Try Advanced → Disable OpenCL and re-stack.)"
         self.statusBar().showMessage(f"Stack failed: {first_line}{hint}")
-        self.log_panel.append(msg)
+        if self._compare_mode:
+            self.log_panel.append_tagged("focus-stack", msg)
+            self._compare_outputs["focus-stack"] = None
+            self._finalise_compare()
+        else:
+            self.log_panel.append(msg)
 
     def _on_stack_cancelled(self) -> None:
         self._finish_stacking_ui()
         self.statusBar().showMessage("Stacking cancelled.", 4000)
+        if self._compare_mode:
+            self._compare_mode = False
+            self._compare_outputs = {"pyramid": None, "focus-stack": None}
+
+    def _finalise_compare(self) -> None:
+        """Called when Compare has results (one or both stackers done)."""
+        pyramid_ok = self._compare_outputs["pyramid"] is not None
+        fs_ok = self._compare_outputs["focus-stack"] is not None
+        self._compare_mode = False
+
+        self.preview_panel.set_compare_outputs(
+            pyramid_path=self._compare_outputs["pyramid"],
+            focus_stack_path=self._compare_outputs["focus-stack"],
+        )
+
+        # Pick a default export target — prefer pyramid if we have it.
+        target = self._compare_outputs["pyramid"] or self._compare_outputs["focus-stack"]
+        if target:
+            self._stacked_output = target
+            self.controls.export_controls.setEnabled(True)
+            if self.controls.input_path:
+                self.controls.export_controls.prefill_for_input(self.controls.input_path)
+
+        if pyramid_ok and fs_ok:
+            status = "Compare complete. Use the view toggle to inspect either output."
+        elif pyramid_ok:
+            status = "Compare: Pyramid succeeded, focus-stack failed (see log)."
+        elif fs_ok:
+            status = "Compare: focus-stack succeeded, Pyramid failed (see log)."
+        else:
+            status = "Compare: both methods failed (see log)."
+        self.statusBar().showMessage(status, 10000)
 
     # ---- export ----------------------------------------------------------
 
