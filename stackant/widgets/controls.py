@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
 )
 
 from .filter_controls import FilterControls
+from .stack_controls import StackControls
 
 
 class ControlsPanel(QFrame):
@@ -75,6 +76,9 @@ class ControlsPanel(QFrame):
 
         self.filter_controls = FilterControls()
         layout.addWidget(self.filter_controls)
+
+        self.stack_controls = StackControls()
+        layout.addWidget(self.stack_controls)
 
         layout.addStretch(1)
 

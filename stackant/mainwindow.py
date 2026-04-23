@@ -26,8 +26,12 @@ from .frame_filter import (
     score_frames,
     suggested_decimation_target,
 )
+from .stacker import FocusStacker
 from .widgets.controls import ControlsPanel
 from .widgets.filmstrip import Filmstrip
+from .widgets.log_panel import LogPanel
+
+STACKED_FILENAME = "stacked_preview.tif"
 
 
 class _PlaceholderPanel(QFrame):
@@ -55,16 +59,20 @@ class MainWindow(QMainWindow):
     def __init__(self, tool_statuses: Sequence[ToolStatus] | None = None):
         super().__init__()
         self.setWindowTitle(config.APP_NAME)
-        self.resize(1280, 780)
+        self.resize(1280, 820)
 
         self._tool_statuses = tool_statuses
         self._extractor = FrameExtractor(self)
+        self._stacker = FocusStacker(self)
         self._current_temp_dir: Path | None = None
         self._filter_state: FilterState | None = None
+        self._stacked_output: str | None = None
 
         self._build_ui()
         self._wire_signals()
         self._show_tool_statuses(tool_statuses)
+
+    # ---- UI construction -------------------------------------------------
 
     def _build_ui(self) -> None:
         central = QWidget()
@@ -92,6 +100,9 @@ class MainWindow(QMainWindow):
         self.progress.setRange(0, 100)
         root.addWidget(self.progress)
 
+        self.log_panel = LogPanel()
+        root.addWidget(self.log_panel)
+
         self.setStatusBar(QStatusBar())
 
     def _wire_signals(self) -> None:
@@ -105,11 +116,24 @@ class MainWindow(QMainWindow):
         fc.decimation_changed.connect(self._on_decimation_changed)
         fc.auto_threshold_requested.connect(self._on_auto_threshold)
 
+        sc = self.controls.stack_controls
+        sc.stack_requested.connect(self._on_stack_requested)
+        sc.cancel_requested.connect(self._stacker.cancel)
+
         self.filmstrip.toggle_requested.connect(self._on_frame_toggled)
 
         self._extractor.progress.connect(self.progress.setValue)
+        self._extractor.log.connect(self.log_panel.append)
         self._extractor.finished_ok.connect(self._on_extraction_done)
         self._extractor.failed.connect(self._on_extraction_failed)
+
+        self._stacker.progress.connect(self.progress.setValue)
+        self._stacker.log.connect(self.log_panel.append)
+        self._stacker.command_ready.connect(
+            lambda cmd: self.log_panel.append(f"\n$ {cmd}\n")
+        )
+        self._stacker.finished_ok.connect(self._on_stack_done)
+        self._stacker.failed.connect(self._on_stack_failed)
 
     # ---- input handling --------------------------------------------------
 
@@ -117,6 +141,7 @@ class MainWindow(QMainWindow):
         self.filmstrip.clear()
         self._filter_state = None
         self.controls.filter_controls.setEnabled(False)
+        self.controls.stack_controls.set_ready(False)
         self.statusBar().showMessage(f"Loaded video: {Path(path).name}", 4000)
 
     def _on_folder_selected(self, path: str) -> None:
@@ -127,9 +152,7 @@ class MainWindow(QMainWindow):
             return
         self.statusBar().showMessage(f"Loading {len(frames)} thumbnails…")
         self.filmstrip.load_frames(frames)
-        self.statusBar().showMessage(
-            f"Loaded {len(frames)} frames. Scoring…"
-        )
+        self.statusBar().showMessage(f"Loaded {len(frames)} frames. Scoring…")
         self._run_scoring(frames)
 
     def _on_extract_requested(self, decimation: int) -> None:
@@ -195,6 +218,7 @@ class MainWindow(QMainWindow):
         self.filmstrip.apply_mask(mask)
         kept, total = self._filter_state.counts()
         self.controls.filter_controls.set_counts(kept, total)
+        self.controls.stack_controls.set_ready(kept > 0)
         self.statusBar().showMessage(f"{kept} / {total} frames kept.", 4000)
 
     def _on_threshold_changed(self, value: float) -> None:
@@ -224,6 +248,43 @@ class MainWindow(QMainWindow):
         if 0 <= index < len(current_mask):
             self._filter_state.manual_overrides[index] = not current_mask[index]
             self._refresh_filter_view()
+
+    # ---- stacking --------------------------------------------------------
+
+    def _kept_frame_paths(self) -> list[str]:
+        if self._filter_state is None:
+            return []
+        mask = self._filter_state.kept_mask()
+        paths = self.filmstrip.frame_paths()
+        return [p for p, m in zip(paths, mask) if m]
+
+    def _on_stack_requested(self) -> None:
+        kept = self._kept_frame_paths()
+        if not kept:
+            self.statusBar().showMessage("No frames selected for stacking.")
+            return
+        if self._current_temp_dir is None:
+            self._current_temp_dir = tempfiles.make_temp_dir()
+        output = str(self._current_temp_dir / STACKED_FILENAME)
+        self._stacked_output = output
+        self.progress.setVisible(True)
+        self.progress.setValue(0)
+        self.controls.stack_controls.set_running(True)
+        self.statusBar().showMessage(f"Stacking {len(kept)} frames…")
+        self._stacker.stack(kept, output, **self.controls.stack_controls.params())
+
+    def _on_stack_done(self, output_path: str) -> None:
+        self.progress.setVisible(False)
+        self.controls.stack_controls.set_running(False)
+        self.statusBar().showMessage(f"Stack complete: {Path(output_path).name}", 8000)
+        # Session 5 will load this into the preview panel.
+
+    def _on_stack_failed(self, msg: str) -> None:
+        self.progress.setVisible(False)
+        self.controls.stack_controls.set_running(False)
+        first_line = msg.splitlines()[0] if msg else "Stack failed."
+        self.statusBar().showMessage(f"Stack failed: {first_line}")
+        self.log_panel.append(msg)
 
     # ---- status bar ------------------------------------------------------
 
