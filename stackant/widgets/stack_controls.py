@@ -51,6 +51,10 @@ class StackControls(QGroupBox):
         self.spn_consistency = QSpinBox()
         self.spn_consistency.setRange(0, 2)
         self.spn_consistency.setValue(2)
+        self.spn_consistency.setToolTip(
+            "Higher values reject more pixels that disagree across frames — "
+            "cleaner result, slightly longer runtime."
+        )
         row.addWidget(self.spn_consistency)
         row.addStretch(1)
         ab.addLayout(row)
@@ -70,6 +74,10 @@ class StackControls(QGroupBox):
 
         row = QHBoxLayout()
         self.chk_halo = QCheckBox("Halo radius:")
+        self.chk_halo.setToolTip(
+            "Radius in pixels for halo removal around sharp edges. Leave off "
+            "unless the result shows bright fringes."
+        )
         self.spn_halo = QSpinBox()
         self.spn_halo.setRange(1, 200)
         self.spn_halo.setValue(32)

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
-from PyQt6.QtGui import QIcon
+from PyQt6.QtGui import QIcon, QKeyEvent
 from PyQt6.QtWidgets import QAbstractItemView, QListWidget, QListWidgetItem
 
 from ..thumbnails import make_rejected_pixmap, make_thumbnail
@@ -34,6 +34,9 @@ class Filmstrip(QListWidget):
         self._rejected_pixmaps: list = []
 
         self.itemDoubleClicked.connect(self._on_item_double_clicked)
+        self.setToolTip(
+            "Double-click or press Space to include/exclude a frame manually."
+        )
 
     def load_frames(self, paths: list[str]) -> None:
         self.clear()
@@ -66,3 +69,13 @@ class Filmstrip(QListWidget):
         idx = item.data(_INDEX_ROLE)
         if idx is not None:
             self.toggle_requested.emit(int(idx))
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if event.key() == Qt.Key.Key_Space:
+            item = self.currentItem()
+            if item is not None:
+                idx = item.data(_INDEX_ROLE)
+                if idx is not None:
+                    self.toggle_requested.emit(int(idx))
+                    return
+        super().keyPressEvent(event)

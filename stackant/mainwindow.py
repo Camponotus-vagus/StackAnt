@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Sequence
 
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QAction, QIcon, QKeySequence
 from PyQt6.QtWidgets import (
     QMainWindow,
     QMessageBox,
@@ -15,7 +16,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from . import config, tempfiles
+from . import config, settings, tempfiles
 from .dependency_checker import ToolStatus
 from .exporter import export_jpeg, export_tiff, reveal_in_file_manager
 from .folder_loader import list_images
@@ -49,8 +50,14 @@ class MainWindow(QMainWindow):
         self._stacked_output: str | None = None
 
         self._build_ui()
+        self._build_menu()
         self._wire_signals()
+        self._apply_saved_defaults()
         self._show_tool_statuses(tool_statuses)
+
+        icon_path = Path(__file__).resolve().parent.parent / "assets" / "icon.png"
+        if icon_path.is_file():
+            self.setWindowIcon(QIcon(str(icon_path)))
 
     # ---- UI construction -------------------------------------------------
 
@@ -82,6 +89,62 @@ class MainWindow(QMainWindow):
         root.addWidget(self.log_panel)
 
         self.setStatusBar(QStatusBar())
+
+    def _build_menu(self) -> None:
+        mb = self.menuBar()
+        m_file = mb.addMenu("&File")
+
+        act_open_video = QAction("Open &Video…", self)
+        act_open_video.setShortcut(QKeySequence.StandardKey.Open)
+        act_open_video.setStatusTip("Open a manual-focus-pull video for frame extraction")
+        act_open_video.triggered.connect(self.controls._pick_video)
+        m_file.addAction(act_open_video)
+
+        act_open_folder = QAction("Open Image &Folder…", self)
+        act_open_folder.setShortcut("Ctrl+Shift+O")
+        act_open_folder.setStatusTip("Load an existing folder of already-extracted frames")
+        act_open_folder.triggered.connect(self.controls._pick_folder)
+        m_file.addAction(act_open_folder)
+
+        m_file.addSeparator()
+
+        act_export = QAction("&Export stacked image…", self)
+        act_export.setShortcut("Ctrl+E")
+        act_export.setStatusTip("Export the stacked result to TIFF and/or JPEG")
+        act_export.triggered.connect(self._on_export_requested)
+        m_file.addAction(act_export)
+
+        m_file.addSeparator()
+
+        act_quit = QAction("&Quit", self)
+        act_quit.setShortcut(QKeySequence.StandardKey.Quit)
+        act_quit.triggered.connect(self.close)
+        m_file.addAction(act_quit)
+
+    def _apply_saved_defaults(self) -> None:
+        geom, state = settings.load_window_state()
+        if geom:
+            self.restoreGeometry(geom)
+        if state:
+            self.restoreState(state)
+
+        exp = settings.load_export_defaults()
+        ec = self.controls.export_controls
+        if exp["folder"]:
+            ec.txt_folder.setText(exp["folder"])
+        ec.chk_tiff.setChecked(exp["tiff"])
+        ec.chk_jpeg.setChecked(exp["jpeg"])
+        ec.sld_quality.setValue(exp["quality"])
+
+        sp = settings.load_stack_params()
+        sc = self.controls.stack_controls
+        sc.spn_consistency.setValue(sp["consistency"])
+        sc.chk_denoise.setChecked(sp["denoise"])
+        sc.spn_sharp.setValue(sp["sharp_strength"])
+        if sp["halo_radius"] is not None:
+            sc.chk_halo.setChecked(True)
+            sc.spn_halo.setValue(sp["halo_radius"])
+        sc.txt_extra.setText(sp["extra_cli"])
 
     def _wire_signals(self) -> None:
         self.controls.video_selected.connect(self._on_video_selected)
@@ -332,6 +395,23 @@ class MainWindow(QMainWindow):
         reveal_in_file_manager(str(folder))
 
     # ---- status bar ------------------------------------------------------
+
+    # ---- close / persistence --------------------------------------------
+
+    def closeEvent(self, event) -> None:
+        # Cancel any running processes so they don't keep writing to temp
+        self._extractor.cancel()
+        self._stacker.cancel()
+        # Persist settings
+        settings.save_window_state(self.saveGeometry(), self.saveState())
+        ec = self.controls.export_controls.settings()
+        settings.save_export_defaults(
+            folder=ec["folder"], quality=ec["quality"],
+            tiff=ec["tiff"], jpeg=ec["jpeg"],
+        )
+        settings.save_stack_params(self.controls.stack_controls.params())
+        # tempfiles.cleanup_all registered via atexit
+        super().closeEvent(event)
 
     def _show_tool_statuses(self, statuses: Sequence[ToolStatus] | None) -> None:
         if not statuses:

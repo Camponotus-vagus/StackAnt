@@ -48,6 +48,9 @@ class FilterControls(QGroupBox):
         self.sld_threshold = QSlider(Qt.Orientation.Horizontal)
         self.sld_threshold.setRange(0, self._SLIDER_RESOLUTION)
         self.sld_threshold.valueChanged.connect(self._on_slider_changed)
+        self.sld_threshold.setToolTip(
+            "Laplacian-variance floor: frames less sharp than this are rejected."
+        )
         layout.addWidget(self.sld_threshold)
 
         auto_row = QHBoxLayout()
@@ -58,6 +61,10 @@ class FilterControls(QGroupBox):
 
         d_row = QHBoxLayout()
         self.chk_decimate = QCheckBox("Cap kept frames at:")
+        self.chk_decimate.setToolTip(
+            "When more frames survive the threshold than this cap, evenly-spaced\n"
+            "thinning brings the set back down to the cap before stacking."
+        )
         self.chk_decimate.toggled.connect(self._emit_decimation)
         self.spn_decimation_target = QSpinBox()
         self.spn_decimation_target.setRange(1, 1000)
