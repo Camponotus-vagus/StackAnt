@@ -1,5 +1,8 @@
 # StackAnt
 
+[![CI](https://github.com/Camponotus-vagus/StackAnt/actions/workflows/ci.yml/badge.svg)](https://github.com/Camponotus-vagus/StackAnt/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A focus-stacking GUI for macro entomology photography.
 
 Record a short video of a specimen while rotating the lens's focus ring
