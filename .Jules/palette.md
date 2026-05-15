@@ -1,0 +1,3 @@
+## 2025-05-14 - [Drag and Drop for File Ingestion]
+**Learning:** Adding drag-and-drop support significantly lowers the friction for users already browsing their file system. In desktop applications like StackAnt, the main window is the most intuitive drop target. Reusing existing logic by refactoring UI-bound "pick" methods to accept optional paths allows for clean integration with both manual dialogs and drop events.
+**Action:** Always check if a desktop app has a primary "input" flow and implement drag-and-drop on the main window. Ensure internal methods like `_pick_file` are robust enough to handle both `bool` (from signals) and `str` (from drop events).

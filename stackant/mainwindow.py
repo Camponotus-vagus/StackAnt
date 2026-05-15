@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Sequence
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QAction, QIcon, QKeySequence
+from PyQt6.QtGui import QAction, QDragEnterEvent, QDropEvent, QIcon, QKeySequence
 from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -44,6 +44,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle(config.APP_NAME)
         self.resize(1280, 820)
+        self.setAcceptDrops(True)
 
         self._tool_statuses = tool_statuses
         self._extractor = FrameExtractor(self)
@@ -708,3 +709,28 @@ class MainWindow(QMainWindow):
             else:
                 parts.append(f"{s.name}: missing")
         self.statusBar().showMessage("  |  ".join(parts))
+
+    # ---- drag and drop ---------------------------------------------------
+
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+
+    def dropEvent(self, event: QDropEvent) -> None:
+        urls = event.mimeData().urls()
+        if not urls:
+            return
+
+        # We only handle the first dropped item for now
+        url = urls[0]
+        if not url.isLocalFile():
+            return
+
+        path = url.toLocalFile()
+        p = Path(path)
+
+        if p.is_dir():
+            self.controls._pick_folder(path)
+        elif p.is_file():
+            # Treat files as videos; StackAnt handles the extraction/validation.
+            self.controls._pick_video(path)

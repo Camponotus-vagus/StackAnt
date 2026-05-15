@@ -91,16 +91,18 @@ class ControlsPanel(QFrame):
         self.btn_extract.clicked.connect(self._emit_extract)
         self.btn_cancel.clicked.connect(self.cancel_requested.emit)
 
-    def _pick_video(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Open video", "", "Videos (*.mp4 *.mov *.avi *.mkv);;All files (*)"
-        )
+    def _pick_video(self, path: str | None = None) -> None:
+        if not isinstance(path, str):
+            path, _ = QFileDialog.getOpenFileName(
+                self, "Open video", "", "Videos (*.mp4 *.mov *.avi *.mkv);;All files (*)"
+            )
         if path:
             self._set_input(path, is_folder=False)
             self.video_selected.emit(path)
 
-    def _pick_folder(self) -> None:
-        path = QFileDialog.getExistingDirectory(self, "Open image folder")
+    def _pick_folder(self, path: str | None = None) -> None:
+        if not isinstance(path, str):
+            path = QFileDialog.getExistingDirectory(self, "Open image folder")
         if path:
             self._set_input(path, is_folder=True)
             self.folder_selected.emit(path)
