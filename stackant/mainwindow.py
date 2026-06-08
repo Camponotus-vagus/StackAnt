@@ -200,6 +200,7 @@ class MainWindow(QMainWindow):
         sc = self.controls.stack_controls
         sc.stack_requested.connect(self._on_stack_requested)
         sc.cancel_requested.connect(self._stacker.cancel)
+        sc.cancel_requested.connect(self._pyramid_stacker.cancel)
 
         self.filmstrip.toggle_requested.connect(self._on_frame_toggled)
         self.filmstrip.currentItemChanged.connect(self._on_filmstrip_selection_changed)
@@ -708,6 +709,7 @@ class MainWindow(QMainWindow):
         # Cancel any running processes so they don't keep writing to temp
         self._extractor.cancel()
         self._stacker.cancel()
+        self._pyramid_stacker.cancel()
         # Persist settings
         settings.save_window_state(self.saveGeometry(), self.saveState())
         ec = self.controls.export_controls.settings()

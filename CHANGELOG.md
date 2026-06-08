@@ -35,6 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The Cancel button and window-close now also stop an in-progress
+  **Pyramid** run (the default backend), not just `focus-stack` —
+  `cancel_requested` and `closeEvent` were only wired to the
+  focus-stack stacker.
 - macOS: `focus-stack` runs no longer dead-end on the GPU OpenCL
   wavelet kernel (`can't create cl_mem handle for passed UMat
   buffer`). On an OpenCL failure the run now auto-retries once on the

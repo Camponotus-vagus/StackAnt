@@ -658,3 +658,37 @@ class TestMethodPicker:
         assert not sc.btn_compare.isEnabled()
         sc.set_ready(True)
         assert sc.btn_compare.isEnabled()
+
+
+class TestPyramidCancelWiring:
+    """Cancel and window-close must stop a Pyramid run too — it is the app
+    default backend, yet only focus-stack used to be wired to Cancel."""
+
+    def test_cancel_request_reaches_pyramid_stacker(self, app):
+        from unittest.mock import patch
+
+        from stackant.mainwindow import MainWindow
+        from stackant.pyramid_stacker import PyramidStacker
+
+        called: list[bool] = []
+        # Patch at class level so the connect() made in __init__ targets a real
+        # bound method (Qt captures the slot at connect time).
+        with patch.object(PyramidStacker, "cancel", lambda self: called.append(True)):
+            w = MainWindow(tool_statuses=None)
+            try:
+                w.controls.stack_controls.cancel_requested.emit()
+                assert called, "Cancel button must reach the Pyramid stacker"
+            finally:
+                w.close()
+
+    def test_close_event_cancels_pyramid_stacker(self, app):
+        from unittest.mock import patch
+
+        from stackant.mainwindow import MainWindow
+        from stackant.pyramid_stacker import PyramidStacker
+
+        called: list[bool] = []
+        with patch.object(PyramidStacker, "cancel", lambda self: called.append(True)):
+            w = MainWindow(tool_statuses=None)
+            w.close()
+            assert called, "closeEvent must cancel the Pyramid stacker"
