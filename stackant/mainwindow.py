@@ -28,7 +28,7 @@ from .frame_filter import (
     score_frames,
     suggested_decimation_target,
 )
-from .stacker import FocusStacker
+from .stacker import FocusStacker, is_opencl_failure, should_retry_without_opencl
 from .pyramid_stacker import PyramidStacker, GUIDED_FILTER_AVAILABLE
 from .stacking import choose_method
 from .widgets.controls import ControlsPanel
@@ -57,6 +57,9 @@ class MainWindow(QMainWindow):
         self._compare_outputs: dict[str, str | None] = {
             "pyramid": None, "focus-stack": None,
         }
+        # Context for a one-shot CPU retry after a focus-stack OpenCL failure.
+        self._fs_retry_ctx: tuple[list[str], str, dict] | None = None
+        self._fs_retried: bool = False
 
         self._build_ui()
         self._build_menu()
@@ -442,7 +445,10 @@ class MainWindow(QMainWindow):
             output = str(self._current_temp_dir / "stacked_focus_stack.tif")
             self._stacked_output = output
             self.statusBar().showMessage(f"Stacking {len(kept)} frames (focus-stack)…")
-            self._stacker.stack(kept, output, **self.controls.stack_controls.params())
+            params = self.controls.stack_controls.params()
+            self._fs_retry_ctx = (kept, output, params)
+            self._fs_retried = False
+            self._stacker.stack(kept, output, **params)
 
     def _finish_stacking_ui(self) -> None:
         """Shared UI-reset after a stack completes, fails, or is cancelled."""
@@ -564,10 +570,12 @@ class MainWindow(QMainWindow):
             self.controls.export_controls.prefill_for_input(self.controls.input_path)
 
     def _on_stack_failed(self, msg: str) -> None:
+        if self._maybe_retry_without_opencl(msg):
+            return
         self._finish_stacking_ui()
         first_line = msg.splitlines()[0] if msg else "Stack failed."
         hint = "  (See log panel for details.)"
-        if "OpenCL" in msg or "CL_OUT_OF_RESOURCES" in msg:
+        if is_opencl_failure(msg):
             hint = "  (Try Advanced → Disable OpenCL and re-stack.)"
         self.statusBar().showMessage(f"Stack failed: {first_line}{hint}")
         if self._compare_mode:
@@ -576,6 +584,35 @@ class MainWindow(QMainWindow):
             self._finalise_compare()
         else:
             self.log_panel.append(msg)
+
+    def _maybe_retry_without_opencl(self, msg: str) -> bool:
+        """Auto-recover from a GPU OpenCL failure by re-running once on the CPU.
+
+        Keeps the UI in its running state and re-launches focus-stack with
+        --no-opencl prepended. Returns True when a retry was started.
+        """
+        if self._fs_retry_ctx is None:
+            return False
+        kept, output, params = self._fs_retry_ctx
+        if not should_retry_without_opencl(
+            msg,
+            compare_mode=self._compare_mode,
+            already_retried=self._fs_retried,
+            extra_cli=params.get("extra_cli", ""),
+        ):
+            return False
+        self._fs_retried = True
+        retry_params = {
+            **params,
+            "extra_cli": ("--no-opencl " + params.get("extra_cli", "")).strip(),
+        }
+        self.log_panel.append(
+            "\n[auto] GPU stacking failed (OpenCL); retrying on CPU with --no-opencl\n"
+        )
+        self.statusBar().showMessage("GPU stacking failed; retrying on CPU…")
+        self.progress.setValue(0)
+        self._stacker.stack(kept, output, **retry_params)
+        return True
 
     def _on_stack_cancelled(self) -> None:
         self._finish_stacking_ui()

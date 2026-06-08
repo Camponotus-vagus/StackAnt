@@ -12,6 +12,36 @@ from PyQt6.QtCore import QObject, QProcess, pyqtSignal
 # per-frame task (e.g. "[ 40/214] Grayscale aligned_frame_00023.tif").
 _PROGRESS_RE = re.compile(rb"\[\s*(\d+)\s*/\s*(\d+)\s*\]")
 
+# focus-stack's GPU wavelet kernel (Task_Wavelet_OpenCL / decompose_vertical)
+# fails on macOS' deprecated OpenCL stack with "can't create cl_mem handle ...".
+# --no-opencl routes the same step through the CPU Task_Wavelet instead.
+_OPENCL_FAILURE_RE = re.compile(r"opencl|cl_mem|CL_OUT_OF_RESOURCES", re.IGNORECASE)
+_OPENCL_MARKER = "[OpenCL kernel failure]"
+
+
+def is_opencl_failure(text: str) -> bool:
+    """True if a focus-stack log mentions an OpenCL/GPU kernel failure."""
+    return bool(_OPENCL_FAILURE_RE.search(text))
+
+
+def should_retry_without_opencl(
+    msg: str,
+    *,
+    compare_mode: bool,
+    already_retried: bool,
+    extra_cli: str,
+) -> bool:
+    """Decide whether a failed focus-stack run should be retried on the CPU.
+
+    Retry exactly once, only for a genuine OpenCL failure, and never when the
+    user is comparing backends or has already disabled OpenCL.
+    """
+    if compare_mode or already_retried:
+        return False
+    if "--no-opencl" in extra_cli:
+        return False
+    return is_opencl_failure(msg)
+
 
 def build_focus_stack_args(
     input_frames: list[str],
@@ -131,10 +161,14 @@ class FocusStacker(QObject):
             self.cancelled.emit()
             return
         if exit_code != 0:
-            tail = bytes(self._log_tail).decode(errors="replace")
-            self.failed.emit(
-                f"focus-stack exited with code {exit_code}:\n{tail[-800:]}"
-            )
+            full = bytes(self._log_tail).decode(errors="replace")
+            tail = full[-800:]
+            # The OpenCL error can scroll past the 800-byte tail behind a flood
+            # of repeated progress lines; surface a stable marker so the caller
+            # can still detect it and retry on the CPU.
+            if is_opencl_failure(full) and not is_opencl_failure(tail):
+                tail = f"{_OPENCL_MARKER}\n{tail}"
+            self.failed.emit(f"focus-stack exited with code {exit_code}:\n{tail}")
             return
         if self._output_path and Path(self._output_path).is_file():
             self.progress.emit(100)

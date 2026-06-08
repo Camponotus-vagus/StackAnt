@@ -1,7 +1,7 @@
 """Collapsible subprocess-output log panel."""
 from __future__ import annotations
 
-from PyQt6.QtGui import QClipboard, QFont, QGuiApplication
+from PyQt6.QtGui import QClipboard, QFontDatabase, QGuiApplication
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QPlainTextEdit,
@@ -38,9 +38,7 @@ class LogPanel(QWidget):
         self.view = QPlainTextEdit()
         self.view.setReadOnly(True)
         self.view.setMaximumBlockCount(5000)
-        font = QFont("Monospace")
-        font.setStyleHint(QFont.StyleHint.Monospace)
-        self.view.setFont(font)
+        self.view.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
         self.view.setFixedHeight(160)
         layout.addWidget(self.view)
 

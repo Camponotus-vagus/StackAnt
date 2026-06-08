@@ -33,6 +33,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `opencv-contrib-python-headless` (needed for
   `cv2.ximgproc.guidedFilter`).
 
+### Fixed
+
+- macOS: `focus-stack` runs no longer dead-end on the GPU OpenCL
+  wavelet kernel (`can't create cl_mem handle for passed UMat
+  buffer`). On an OpenCL failure the run now auto-retries once on the
+  CPU with `--no-opencl`, and `Disable OpenCL` defaults on for fresh
+  macOS installs. OpenCL-error detection scans the full captured log,
+  not just the last 800 bytes, so it survives `focus-stack`'s repeated
+  progress lines.
+- macOS: the log panel uses the system fixed-width font, silencing the
+  `qt.qpa.fonts: missing font family "Monospace"` warning.
+- Tests: QSettings is isolated to a throwaway INI during the suite, so
+  running `pytest` no longer reads or overwrites the user's real
+  preferences (export folder, method, OpenCL toggle, …).
+
 ## [0.1.0] — 2026-04-23
 
 First functional release.

@@ -83,7 +83,9 @@ def load_stack_params() -> dict:
         ),
         "halo_radius": None if halo < 0 else halo,
         "extra_cli": s.value("stack/extra_cli", "", type=str),
-        "no_opencl": s.value("stack/no_opencl", False, type=bool),
+        "no_opencl": s.value(
+            "stack/no_opencl", config.FOCUS_STACK_NO_OPENCL_DEFAULT, type=bool
+        ),
     }
 
 
