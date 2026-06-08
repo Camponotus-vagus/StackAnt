@@ -91,3 +91,42 @@ def test_batchsettings_and_item_defaults():
     assert s.method == "focus-stack"
     item = BatchItem("/v.mp4")
     assert item.status == "pending" and item.output_paths == []
+
+
+import pytest
+from PyQt6.QtWidgets import QApplication
+
+
+@pytest.fixture(scope="session")
+def qapp():
+    return QApplication.instance() or QApplication([])
+
+
+def test_snapshot_for_batch_composes_panel_values(qapp):
+    from stackant.batch import BatchSettings
+    from stackant.widgets.controls import ControlsPanel
+
+    panel = ControlsPanel()
+    panel.stack_controls.set_method("focus-stack")
+    panel.spn_decimation.setValue(3)
+    panel.filter_controls.chk_decimate.setChecked(True)
+    panel.filter_controls.spn_decimation_target.setValue(60)
+    panel.export_controls.chk_tiff.setChecked(True)
+    panel.export_controls.chk_jpeg.setChecked(False)
+    panel.export_controls.sld_quality.setValue(88)
+
+    s = panel.snapshot_for_batch()
+    assert isinstance(s, BatchSettings)
+    assert s.method == "focus-stack"
+    assert s.extract_decimation == 3
+    assert s.cap == 60
+    assert s.export == {"tiff": True, "jpeg": False, "quality": 88}
+    assert "extra_cli" in s.focus_params
+    assert "guided_radius" in s.pyramid_params
+
+
+def test_snapshot_cap_none_when_decimate_unchecked(qapp):
+    from stackant.widgets.controls import ControlsPanel
+    panel = ControlsPanel()
+    panel.filter_controls.chk_decimate.setChecked(False)
+    assert panel.snapshot_for_batch().cap is None

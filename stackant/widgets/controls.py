@@ -130,6 +130,27 @@ class ControlsPanel(QFrame):
         self.btn_open_folder.setEnabled(not busy)
         self.spn_decimation.setEnabled(not busy and not self._input_is_folder)
 
+    def snapshot_for_batch(self):
+        """Capture the current panel settings as a BatchSettings for the batch run.
+
+        `StackControls.params()` already folds --no-opencl into extra_cli, so the
+        batch inherits the OpenCL choice. The export name/folder are intentionally
+        dropped: the batch auto-names each output next to its source video.
+        """
+        from ..batch import BatchSettings
+
+        sc = self.stack_controls
+        exp = self.export_controls.settings()
+        cap = self.filter_controls.decimation_target()
+        return BatchSettings(
+            method=sc.method(),
+            extract_decimation=self.spn_decimation.value(),
+            cap=cap if cap > 0 else None,
+            focus_params=sc.params(),
+            pyramid_params=sc.pyramid_params(),
+            export={"tiff": exp["tiff"], "jpeg": exp["jpeg"], "quality": exp["quality"]},
+        )
+
     @property
     def input_path(self) -> str | None:
         return self._input_path
