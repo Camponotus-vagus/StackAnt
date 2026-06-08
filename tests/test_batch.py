@@ -130,3 +130,119 @@ def test_snapshot_cap_none_when_decimate_unchecked(qapp):
     panel = ControlsPanel()
     panel.filter_controls.chk_decimate.setChecked(False)
     assert panel.snapshot_for_batch().cap is None
+
+
+from PyQt6.QtCore import QObject, pyqtSignal
+
+
+class _FakeExtractor(QObject):
+    progress = pyqtSignal(int)
+    log = pyqtSignal(str)
+    finished_ok = pyqtSignal(list)
+    failed = pyqtSignal(str)
+    cancelled = pyqtSignal()
+
+    def __init__(self):
+        super().__init__()
+        self.calls = []
+        self._running = False
+
+    @property
+    def is_running(self):
+        return self._running
+
+    def extract(self, video, out_dir, decimation=1):
+        self.calls.append((video, out_dir, decimation))
+        self._running = True
+
+    def finish(self, frames):
+        self._running = False
+        self.finished_ok.emit(frames)
+
+    def fail(self, msg):
+        self._running = False
+        self.failed.emit(msg)
+
+    def cancel(self):
+        self._running = False
+        self.cancelled.emit()
+
+
+class _FakeStacker(QObject):
+    progress = pyqtSignal(int)
+    log = pyqtSignal(str)
+    finished_ok = pyqtSignal(str)
+    failed = pyqtSignal(str)
+    cancelled = pyqtSignal()
+
+    def __init__(self):
+        super().__init__()
+        self.calls = []
+        self._running = False
+
+    @property
+    def is_running(self):
+        return self._running
+
+    def stack(self, frames, out, **kw):
+        self.calls.append((list(frames), out, kw))
+        self._running = True
+
+    def finish(self, out):
+        self._running = False
+        self.finished_ok.emit(out)
+
+    def fail(self, msg):
+        self._running = False
+        self.failed.emit(msg)
+
+    def cancel(self):
+        self._running = False
+        self.cancelled.emit()
+
+
+def _make_controller():
+    from stackant.batch_controller import BatchController
+    ext, foc, pyr = _FakeExtractor(), _FakeStacker(), _FakeStacker()
+    return BatchController(ext, foc, pyr), ext, foc, pyr
+
+
+def _settings(export):
+    from stackant.batch import BatchSettings
+    return BatchSettings(
+        method="focus-stack", extract_decimation=1, cap=None,
+        focus_params={"consistency": 2, "denoise": True, "sharp_strength": 1,
+                      "halo_radius": None, "extra_cli": ""},
+        pyramid_params={"pyramid_depth": None, "guided_radius": 8, "drop_misaligned": True},
+        export=export,
+    )
+
+
+def test_skip_already_done_items(qapp, tmp_path):
+    from stackant.batch import BatchItem
+    v1 = str(tmp_path / "a.mp4"); (tmp_path / "a.mp4").write_bytes(b"x")
+    v2 = str(tmp_path / "b.mp4"); (tmp_path / "b.mp4").write_bytes(b"x")
+    (tmp_path / "a_stacked.tif").write_bytes(b"x")
+    export = {"tiff": True, "jpeg": False, "quality": 95}
+
+    ctrl, ext, foc, pyr = _make_controller()
+    finished = {}
+    ctrl.batch_finished.connect(lambda s: finished.update(s))
+    statuses = []
+    ctrl.item_finished.connect(lambda i, st, m: statuses.append((i, st)))
+
+    ctrl.run([BatchItem(v1), BatchItem(v2)], _settings(export))
+    assert (0, "skipped") in statuses
+    assert ext.calls == [(v2, ext.calls[0][1], 1)]
+
+
+def test_run_starts_extraction_for_first_item(qapp, tmp_path):
+    from stackant.batch import BatchItem
+    v = str(tmp_path / "a.mp4"); (tmp_path / "a.mp4").write_bytes(b"x")
+    export = {"tiff": True, "jpeg": False, "quality": 95}
+    ctrl, ext, foc, pyr = _make_controller()
+    started = []
+    ctrl.item_started.connect(started.append)
+    ctrl.run([BatchItem(v)], _settings(export))
+    assert started == [0]
+    assert ext.calls and ext.calls[0][0] == v and ext.calls[0][2] == 1
