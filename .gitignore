@@ -24,3 +24,7 @@ tmp/
 tmp_*/
 *.log
 docs/PLAN.md.bak
+
+# Claude Code local scratch (skill artifacts, brainstorming specs, task plans)
+.claude/
+docs/superpowers/
