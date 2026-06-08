@@ -39,6 +39,7 @@ class BatchController(QObject):
         self._temp_dir: Path | None = None
         self._kept: list[str] = []
         self._stack_out: str | None = None
+        self._stack_method: str = "focus-stack"
         self._item_retried: bool = False
         self._cancelled: bool = False
 
@@ -125,6 +126,7 @@ class BatchController(QObject):
 
     def _on_extract_done(self, frames) -> None:
         if self._cancelled:
+            self._on_worker_cancelled()
             return
         self.item_status.emit(self._idx, "scoring")
         scores = [
@@ -137,6 +139,9 @@ class BatchController(QObject):
             scores=scores, threshold=threshold, decimation_target=target
         ).kept_mask()
         kept = [p for p, keep in zip(frames, mask) if keep]
+        if self._cancelled:
+            self._on_worker_cancelled()
+            return
         if not kept:  # defense-in-depth: auto_threshold makes this unreachable
             self._fail_item("no frames kept after filtering")
             return
@@ -158,6 +163,7 @@ class BatchController(QObject):
             method = choose_method(len(self._kept), w, h)
             self.log.emit(f"[auto] {method} for {len(self._kept)} frames at {w}x{h}")
         self.item_status.emit(self._idx, f"stacking ({method})")
+        self._stack_method = method
         if method == "pyramid":
             self._pyramid.stack(self._kept, self._stack_out, **self._settings.pyramid_params)
         else:
@@ -200,10 +206,10 @@ class BatchController(QObject):
         if self._cancelled:
             return
         params = self._settings.focus_params
-        if not self._item_retried and should_retry_without_opencl(
-            msg, compare_mode=False, already_retried=self._item_retried,
-            extra_cli=params.get("extra_cli", ""),
-        ):
+        if (self._stack_method != "pyramid" and not self._item_retried
+                and should_retry_without_opencl(
+                    msg, compare_mode=False, already_retried=self._item_retried,
+                    extra_cli=params.get("extra_cli", ""))):
             self._item_retried = True
             retry = {**params,
                      "extra_cli": ("--no-opencl " + params.get("extra_cli", "")).strip()}

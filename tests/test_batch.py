@@ -361,3 +361,52 @@ def test_cancel_mid_stack_stops_without_advancing(qapp, tmp_path, monkeypatch):
     assert items[0].status == "cancelled"
     assert items[1].status == "pending", "must not advance to video 2"
     assert summary.get("cancelled") == 1
+
+
+def test_cancel_during_scoring_does_not_launch_stack(qapp, tmp_path, monkeypatch):
+    from stackant import batch_controller as bc
+    from stackant.batch import BatchItem
+    from stackant.frame_filter import FrameScore
+    ctrl, ext, foc, pyr = _make_controller()
+
+    def fake_score(frames, progress_callback=None):
+        ctrl.cancel()  # user clicks Cancel mid-scoring
+        return [FrameScore(i, p, 100.0) for i, p in enumerate(frames)]
+
+    monkeypatch.setattr(bc, "score_frames", fake_score)
+    monkeypatch.setattr(bc.tempfiles, "remove_temp_dir", lambda p: None)
+    v = str(tmp_path / "a.mp4"); (tmp_path / "a.mp4").write_bytes(b"x")
+    items = [BatchItem(v)]
+    summary = {}
+    ctrl.batch_finished.connect(lambda s: summary.update(s))
+    ctrl.run(items, _settings({"tiff": True, "jpeg": False, "quality": 95}))
+    ext.finish(["f0.tif"])
+    assert not foc.calls, "stack must NOT launch after a cancel during scoring"
+    assert items[0].status == "cancelled"
+    assert summary.get("cancelled") == 1
+
+
+def test_pyramid_failure_does_not_retry_on_focus(qapp, tmp_path, monkeypatch):
+    from stackant import batch_controller as bc
+    from stackant.batch import BatchItem, BatchSettings
+    from stackant.frame_filter import FrameScore
+    monkeypatch.setattr(bc, "score_frames",
+                        lambda frames, progress_callback=None:
+                        [FrameScore(i, p, 100.0) for i, p in enumerate(frames)])
+    monkeypatch.setattr(bc.tempfiles, "remove_temp_dir", lambda p: None)
+    v = str(tmp_path / "a.mp4"); (tmp_path / "a.mp4").write_bytes(b"x")
+    settings = BatchSettings(
+        method="pyramid", extract_decimation=1, cap=None,
+        focus_params={"consistency": 2, "denoise": True, "sharp_strength": 1,
+                      "halo_radius": None, "extra_cli": ""},
+        pyramid_params={"pyramid_depth": None, "guided_radius": 8, "drop_misaligned": True},
+        export={"tiff": True, "jpeg": False, "quality": 95},
+    )
+    ctrl, ext, foc, pyr = _make_controller()
+    items = [BatchItem(v)]
+    ctrl.run(items, settings)
+    ext.finish(["f0.tif"])
+    assert pyr.calls and not foc.calls, "pyramid should run, not focus"
+    pyr.fail("Failed to execute OpenCL kernel")  # contrived OpenCL-looking message
+    assert not foc.calls, "a pyramid failure must never trigger the focus-stack retry"
+    assert items[0].status == "failed"
