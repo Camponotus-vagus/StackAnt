@@ -5,6 +5,24 @@ All notable changes to this project will be documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — Unreleased
+
+### Added
+
+- **Batch processing** (`File ▸ Batch…`): scan a folder, queue every video, and run
+  extract → score → auto-filter → stack → export on each in sequence. Settings are
+  taken once from the main panel; outputs are written next to each source video as
+  `<name>_stacked.tif` / `.jpg`; existing outputs are skipped so an interrupted run
+  is resumable; a failed video is logged and the queue continues. Per-video + overall
+  progress, with a final done/failed/skipped summary.
+
+### Changed
+
+- The Filter "cap kept frames" control and all Export settings (formats, quality,
+  folder) are now editable before a video is loaded or stacked — only the
+  *actions* (Auto-threshold, Export) stay gated. This makes batch settings reachable
+  up front and lets single-mode users pre-stage their export.
+
 ## [0.2.0] — Unreleased
 
 ### Added
