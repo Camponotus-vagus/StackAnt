@@ -28,3 +28,7 @@ docs/PLAN.md.bak
 # Claude Code local scratch (skill artifacts, brainstorming specs, task plans)
 .claude/
 docs/superpowers/
+
+# Local promo workspace (draft posts, generator scripts). Finished public
+# assets live in assets/ and get committed; the drafts stay private.
+promo/
