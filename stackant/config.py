@@ -2,7 +2,7 @@
 import platform
 
 APP_NAME = "StackAnt"
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.3.1"
 ORG_NAME = "StackAnt"
 
 FFMPEG_DEFAULT_FORMAT = "tiff"
