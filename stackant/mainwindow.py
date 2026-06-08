@@ -144,6 +144,7 @@ class MainWindow(QMainWindow):
         self.controls.set_busy(busy)
         self.act_open_video.setEnabled(not busy)
         self.act_open_folder.setEnabled(not busy)
+        self.act_batch.setEnabled(not busy)
 
     def _open_batch_dialog(self) -> None:
         from .widgets.batch_dialog import BatchDialog
@@ -445,6 +446,7 @@ class MainWindow(QMainWindow):
         self.controls.stack_controls.set_running(True)
         self.act_open_video.setEnabled(False)
         self.act_open_folder.setEnabled(False)
+        self.act_batch.setEnabled(False)
 
         if method == "pyramid":
             output = str(self._current_temp_dir / "stacked_pyramid.tif")
@@ -468,6 +470,7 @@ class MainWindow(QMainWindow):
         self.controls.stack_controls.set_running(False)
         self.act_open_video.setEnabled(True)
         self.act_open_folder.setEnabled(True)
+        self.act_batch.setEnabled(True)
 
     def _on_pyramid_log(self, line: str) -> None:
         if self._compare_mode:
@@ -532,6 +535,7 @@ class MainWindow(QMainWindow):
         self.controls.stack_controls.set_running(True)
         self.act_open_video.setEnabled(False)
         self.act_open_folder.setEnabled(False)
+        self.act_batch.setEnabled(False)
 
         self.statusBar().showMessage(
             f"Compare: running Pyramid on {len(kept)} frames…"

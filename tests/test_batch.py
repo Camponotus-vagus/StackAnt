@@ -475,3 +475,51 @@ def test_mainwindow_has_batch_action_that_builds_dialog(qapp):
         assert dlg.table.rowCount() == 0
     finally:
         w.close()
+
+
+def test_dialog_reject_during_run_cancels(qapp, tmp_path, monkeypatch):
+    (tmp_path / "a.mp4").write_bytes(b"x")
+    dlg, _ = _dialog_with_controls(tmp_path)
+    dlg._populate(str(tmp_path))
+    cancelled = []
+    monkeypatch.setattr(dlg._controller, "cancel", lambda: cancelled.append(True))
+    dlg._running = True
+    dlg.reject()
+    assert cancelled == [True], "Esc/reject during a run must cancel, not dismiss"
+
+
+def test_dialog_close_event_during_run_is_ignored_and_cancels(qapp, tmp_path, monkeypatch):
+    from PyQt6.QtGui import QCloseEvent
+    (tmp_path / "a.mp4").write_bytes(b"x")
+    dlg, _ = _dialog_with_controls(tmp_path)
+    dlg._populate(str(tmp_path))
+    cancelled = []
+    monkeypatch.setattr(dlg._controller, "cancel", lambda: cancelled.append(True))
+    dlg._running = True
+    ev = QCloseEvent()
+    dlg.closeEvent(ev)
+    assert cancelled == [True]
+    assert not ev.isAccepted(), "close must be ignored while a batch is running"
+
+
+def test_dialog_reject_when_idle_does_not_cancel(qapp, tmp_path, monkeypatch):
+    (tmp_path / "a.mp4").write_bytes(b"x")
+    dlg, _ = _dialog_with_controls(tmp_path)
+    dlg._populate(str(tmp_path))
+    cancelled = []
+    monkeypatch.setattr(dlg._controller, "cancel", lambda: cancelled.append(True))
+    dlg.reject()  # not running
+    assert cancelled == []
+
+
+def test_batch_action_disabled_while_busy(qapp):
+    from stackant.mainwindow import MainWindow
+    w = MainWindow(tool_statuses=None)
+    try:
+        assert w.act_batch.isEnabled()
+        w._set_busy(True)
+        assert not w.act_batch.isEnabled()
+        w._set_busy(False)
+        assert w.act_batch.isEnabled()
+    finally:
+        w.close()

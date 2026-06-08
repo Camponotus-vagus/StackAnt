@@ -141,6 +141,8 @@ class BatchController(QObject):
             scores=scores, threshold=threshold, decimation_target=target
         ).kept_mask()
         kept = [p for p, keep in zip(frames, mask) if keep]
+        # A Cancel during scoring's processEvents() pump lands here (no worker was
+        # running to emit `cancelled`), so finalize the run before launching a stack.
         if self._cancelled:
             self._on_worker_cancelled()
             return

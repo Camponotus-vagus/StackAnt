@@ -45,6 +45,22 @@ class BatchDialog(QDialog):
         self._build_ui()
         self._refresh_summary()
 
+    def reject(self) -> None:
+        # Esc / programmatic close: while a batch runs, treat it as Cancel and
+        # stay open until batch_finished re-enables Close, so workers + temp dirs
+        # are torn down cleanly instead of orphaned.
+        if self._running:
+            self._controller.cancel()
+            return
+        super().reject()
+
+    def closeEvent(self, event) -> None:
+        if self._running:
+            self._controller.cancel()
+            event.ignore()
+            return
+        super().closeEvent(event)
+
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
 
