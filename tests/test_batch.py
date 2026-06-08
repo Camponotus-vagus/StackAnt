@@ -5,6 +5,12 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from pathlib import Path
+
+import pytest
+from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtWidgets import QApplication
+
 from stackant import tempfiles
 
 
@@ -22,8 +28,6 @@ def test_remove_temp_dir_is_safe_on_unknown_path():
     tempfiles.remove_temp_dir(d)
     tempfiles.remove_temp_dir(d)  # second call: already gone, still no error
 
-
-from pathlib import Path
 
 from stackant.batch import (
     VIDEO_EXTENSIONS,
@@ -93,10 +97,6 @@ def test_batchsettings_and_item_defaults():
     assert item.status == "pending" and item.output_paths == []
 
 
-import pytest
-from PyQt6.QtWidgets import QApplication
-
-
 @pytest.fixture(scope="session")
 def qapp():
     return QApplication.instance() or QApplication([])
@@ -130,9 +130,6 @@ def test_snapshot_cap_none_when_decimate_unchecked(qapp):
     panel = ControlsPanel()
     panel.filter_controls.chk_decimate.setChecked(False)
     assert panel.snapshot_for_batch().cap is None
-
-
-from PyQt6.QtCore import QObject, pyqtSignal
 
 
 class _FakeExtractor(QObject):
@@ -282,6 +279,7 @@ def test_happy_path_single_video(qapp, tmp_path, monkeypatch):
     assert item.status == "done"
     assert [d for _, d in tiff_calls] == [str(tmp_path / "a_stacked.tif")]
     assert [d for _, d, _ in jpeg_calls] == [str(tmp_path / "a_stacked.jpg")]
+    assert jpeg_calls[0][2] == 90, "JPEG quality must be forwarded from BatchSettings"
     assert removed, "per-video temp dir must be cleaned up"
     assert summary["done"] == 1 and summary["total"] == 1
 

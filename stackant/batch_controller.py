@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from PIL import Image
+
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import QApplication
 
@@ -54,7 +56,7 @@ class BatchController(QObject):
             st.progress.connect(self._on_stack_progress)
 
     # ---- public API ----
-    def run(self, items, settings) -> None:
+    def run(self, items: list[BatchItem], settings: BatchSettings) -> None:
         self._items = list(items)
         self._settings = settings
         self._idx = -1
@@ -86,7 +88,7 @@ class BatchController(QObject):
             return
         self._start_extract(item)
 
-    def _start_extract(self, item) -> None:
+    def _start_extract(self, item: BatchItem) -> None:
         item.status = "running"
         item.step = "extract"
         self._temp_dir = tempfiles.make_temp_dir()
@@ -117,14 +119,14 @@ class BatchController(QObject):
                 summary[it.status] += 1
         self.batch_finished.emit(summary)
 
-    # ---- step handlers (filled in Tasks 7-8) ----
+    # ---- worker signal handlers ----
     def _on_extract_progress(self, pct: int) -> None:
         self.item_progress.emit(self._idx, int(pct * 0.40))
 
     def _on_extract_failed(self, msg: str) -> None:
         self._fail_item(msg)
 
-    def _on_extract_done(self, frames) -> None:
+    def _on_extract_done(self, frames: list[str]) -> None:
         if self._cancelled:
             self._on_worker_cancelled()
             return
@@ -206,10 +208,10 @@ class BatchController(QObject):
         if self._cancelled:
             return
         params = self._settings.focus_params
-        if (self._stack_method != "pyramid" and not self._item_retried
-                and should_retry_without_opencl(
-                    msg, compare_mode=False, already_retried=self._item_retried,
-                    extra_cli=params.get("extra_cli", ""))):
+        if self._stack_method != "pyramid" and should_retry_without_opencl(
+            msg, compare_mode=False, already_retried=self._item_retried,
+            extra_cli=params.get("extra_cli", ""),
+        ):
             self._item_retried = True
             retry = {**params,
                      "extra_cli": ("--no-opencl " + params.get("extra_cli", "")).strip()}
@@ -230,7 +232,6 @@ class BatchController(QObject):
 
 def _first_frame_size(path: str) -> tuple[int, int]:
     try:
-        from PIL import Image
         with Image.open(path) as im:
             return im.size
     except Exception:
