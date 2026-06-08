@@ -692,3 +692,15 @@ class TestPyramidCancelWiring:
             w = MainWindow(tool_statuses=None)
             w.close()
             assert called, "closeEvent must cancel the Pyramid stacker"
+
+
+class TestSharpStrengthRetired:
+    """The installed focus-stack has no --sharp-strength option, so the control
+    is hidden and the flag is not emitted — but the value is still persisted for
+    forward compatibility (a future build may support it)."""
+
+    def test_sharp_control_is_hidden(self, win):
+        assert win.controls.stack_controls.spn_sharp.isHidden()
+
+    def test_params_still_carry_sharp_strength(self, win):
+        assert "sharp_strength" in win.controls.stack_controls.params()

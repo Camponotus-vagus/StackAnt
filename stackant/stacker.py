@@ -57,11 +57,13 @@ def build_focus_stack_args(
 
     All flags use the `--key=value` form; positional frame paths come last.
     """
+    # sharp_strength is accepted (and persisted by the UI) but intentionally not
+    # forwarded: focus-stack has no --sharp-strength option and warns on unknown
+    # flags. Kept in the signature so a future build that supports it can wire in.
     args: list[str] = [
         f"--output={output_path}",
         f"--consistency={int(consistency)}",
         f"--denoise={1 if denoise else 0}",
-        f"--sharp-strength={int(sharp_strength)}",
     ]
     if halo_radius is not None:
         args.append(f"--halo-radius={int(halo_radius)}")

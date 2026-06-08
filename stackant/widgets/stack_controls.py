@@ -109,14 +109,13 @@ class StackControls(QGroupBox):
         self.chk_denoise.setChecked(True)
         fs.addWidget(self.chk_denoise)
 
-        row = QHBoxLayout()
-        row.addWidget(QLabel("Sharpen strength (0–3):"))
-        self.spn_sharp = QSpinBox()
+        # "Sharpen strength" is kept (for settings round-trip and forward
+        # compatibility) but not shown: the installed focus-stack has no
+        # --sharp-strength option, so the knob would do nothing and mislead.
+        self.spn_sharp = QSpinBox(self)
         self.spn_sharp.setRange(0, 3)
         self.spn_sharp.setValue(1)
-        row.addWidget(self.spn_sharp)
-        row.addStretch(1)
-        fs.addLayout(row)
+        self.spn_sharp.setVisible(False)
 
         row = QHBoxLayout()
         self.chk_halo = QCheckBox("Halo radius:")

@@ -10,7 +10,9 @@ def test_basic_args_contain_defaults_and_frames():
     assert "--output=/tmp/out.tif" in args
     assert "--consistency=2" in args
     assert "--denoise=1" in args
-    assert "--sharp-strength=1" in args
+    # --sharp-strength is no longer emitted: the installed focus-stack has no
+    # such option and warns on unknown flags.
+    assert not any(a.startswith("--sharp-strength") for a in args)
     # frame paths appear at the tail
     assert args[-2:] == ["/tmp/a.tif", "/tmp/b.tif"]
 

@@ -35,6 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Stopped sending the unsupported `--sharp-strength` flag to
+  `focus-stack` (it printed `Warning: unknown options: --sharp-strength=1`
+  and did nothing); the inert "Sharpen strength" control is hidden. The
+  value is still persisted in case a future `focus-stack` build adds the
+  option.
 - The Cancel button and window-close now also stop an in-progress
   **Pyramid** run (the default backend), not just `focus-stack` —
   `cancel_requested` and `closeEvent` were only wired to the
