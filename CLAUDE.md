@@ -13,8 +13,12 @@ Full roadmap is in `docs/PLAN.md`. Do not repeat it here.
 
 ## Current state
 
-- v0.3.0 is the current release — it bundles the v0.2 Laplacian-pyramid
-  backend and v0.3 batch processing on top of the v0.1.0 baseline.
+- v0.3.1 is the current release (v0.3.0 plus citation/promo metadata): the
+  v0.2 Laplacian-pyramid backend and v0.3 batch processing on top of v0.1.0.
+- Distribution/findability shipped: live Zenodo DOI (concept
+  `10.5281/zenodo.20597239`) + badge, `CITATION.cff` + ORCID, `.zenodo.json`,
+  social-preview card, README demo GIF + Examples gallery, redesigned ant
+  icon (`assets/icon.svg` → `assets/icon.png`).
 - Two stacking backends: `focus-stack` CLI and an in-process
   Laplacian-pyramid stacker (`stackant/pyramid_stacker.py`, worker
   `QThread`, guided-filter-smoothed weights). Method radio in
@@ -26,6 +30,12 @@ Full roadmap is in `docs/PLAN.md`. Do not repeat it here.
   alongside each source video, skip-existing, per-video failure isolation.
 - Design specs + task plans live in `docs/superpowers/` — Claude-Code-local
   scratch, gitignored (not present in fresh clones).
+- Public-launch groundwork lives in the gitignored `promo/`: 12 community
+  post drafts, the `README-promo.md` playbook (phased plan + live status),
+  and helper scripts (`make_demo_gif.py`, `make_social_preview.py`,
+  `_stack_one.py`). Launch is in progress — start at `promo/README-promo.md`.
+- StackAnt is a personal project: keep author metadata unaffiliated (not
+  MUSE, the author's employer, whose gear/specimens only provide test data).
 
 ## Layout
 
@@ -109,9 +119,11 @@ Italian system locale (subprocess errors may be localised); dev escape hatch
 `sudo apt install libopencv-dev` (binary lands at `build/focus-stack` after `make`),
 copied to `~/.local/bin/focus-stack`.
 
-**macOS:** ffmpeg 8.1.1, `focus-stack` 1.5 at `~/.local/bin/focus-stack`. OpenCL is
-deprecated here (see Gotchas — CPU `--no-opencl` default). The Linux test-video path
-in Testing (above) does not exist on macOS, so video-dependent smoke tests skip.
+**macOS:** ffmpeg 8.1.1, `focus-stack` 1.5 at `~/.local/bin/focus-stack` (not on
+PATH — invoke by full path). OpenCL is deprecated here (see Gotchas — CPU
+`--no-opencl` default). Test videos DO exist on macOS at
+`~/pCloud Drive/Formiche Uganda/Videos/` (focus-pull ant clips; finished
+per-species stacks sit in the parent folder), so end-to-end runs work here too.
 
 ## Running
 
@@ -129,8 +141,11 @@ python main.py
 
 ## Known constraints / decisions
 
-- Bundling (PyInstaller etc.) is out of scope for v1.0 — user installs ffmpeg
-  and focus-stack themselves. The dep checker's job is to make this obvious.
+- A Windows installer bundle is now planned (pulled forward as the launch
+  conversion multiplier): PyInstaller, pyramid-only (no `focus-stack` binary
+  to redistribute), bundled ffmpeg, unsigned MVP first; macOS/Linux later.
+  Until it ships, users install ffmpeg + focus-stack themselves and the dep
+  checker makes that obvious.
 - QSettings for persistence (no YAML/TOML config files).
 - MIT license.
 

@@ -81,7 +81,7 @@ README with screenshot, pinned requirements, CHANGELOG v0.1.0, tag v0.1.0.
 | Subprocess handling | QProcess        | Non-blocking, integrates with Qt event loop                 |
 | Frame format        | TIFF (internal) | Avoid double-lossy from video compression                   |
 | Config persistence  | QSettings       | Cross-platform, no extra dependency                         |
-| Bundling            | Not in v0.1.0   | Added in v0.5 after the algorithm work lands                |
+| Bundling            | Windows first   | Pulled forward as launch multiplier; pyramid-only + bundled ffmpeg |
 
 ## Default Parameters (config.py)
 
@@ -124,6 +124,13 @@ Queue multiple videos, dial in settings once, run extract → score →
 filter → stack → export on each in sequence. Per-video auto-threshold
 only. Failures don't abort the queue.
 
+### v0.3.1 — Citation & launch groundwork ✅ shipped (0.3.1)
+
+CITATION.cff + ORCID, Zenodo DOI (concept 10.5281/zenodo.20597239) + badge,
+`.zenodo.json`, social-preview card, README demo GIF + Examples gallery,
+redesigned ant icon. Public launch in progress; phased playbook and the post
+drafts live in the gitignored `promo/` (`README-promo.md`).
+
 ### v0.4 — Polish
 
 - Optional "Downscale inputs to N px" in the stack Advanced panel so
@@ -132,9 +139,11 @@ only. Failures don't abort the queue.
   paths, Laplacian scores, subprocess commands, tool versions).
 - Windows end-to-end validation.
 
-### v0.5 — Bundled distribution
+### v0.5 — Bundled distribution (pulled forward — next, ahead of v0.4)
 
-PyInstaller (or similar) so end users don't need a Python toolchain.
+A Windows installer, pulled ahead as the launch conversion multiplier:
+PyInstaller, pyramid-only (no `focus-stack` binary to redistribute), bundled
+ffmpeg, unsigned MVP first. macOS (notarized) and Linux follow.
 
 ### v1.0 — Stable
 

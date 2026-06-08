@@ -5,6 +5,17 @@ All notable changes to this project will be documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Zenodo DOI badge and `doi:` in `CITATION.cff` (concept DOI
+  `10.5281/zenodo.20597239`), plus the author's ORCID and a `.zenodo.json` so
+  the Zenodo GitHub integration carries author, ORCID, licence, and keywords
+  on every release.
+- README "Examples" gallery: Ugandan ant specimens stacked from single
+  focus-pull videos (generic labels).
+
 ## [0.3.1] — 2026-06-08
 
 ### Added
