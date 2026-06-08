@@ -408,3 +408,48 @@ def test_pyramid_failure_does_not_retry_on_focus(qapp, tmp_path, monkeypatch):
     pyr.fail("Failed to execute OpenCL kernel")  # contrived OpenCL-looking message
     assert not foc.calls, "a pyramid failure must never trigger the focus-stack retry"
     assert items[0].status == "failed"
+
+
+def _dialog_with_controls(tmp_path):
+    from stackant.widgets.controls import ControlsPanel
+    from stackant.widgets.batch_dialog import BatchDialog
+    panel = ControlsPanel()
+    panel.export_controls.chk_tiff.setChecked(True)
+    panel.export_controls.chk_jpeg.setChecked(False)
+    return BatchDialog(panel), panel
+
+
+def test_dialog_populates_queue_and_marks_done(qapp, tmp_path):
+    (tmp_path / "a.mp4").write_bytes(b"x")
+    (tmp_path / "b.mp4").write_bytes(b"x")
+    (tmp_path / "a_stacked.tif").write_bytes(b"x")  # a already done
+    (tmp_path / "ignore.tiff").write_bytes(b"x")
+    dlg, _ = _dialog_with_controls(tmp_path)
+    dlg._populate(str(tmp_path))
+    assert dlg.table.rowCount() == 2          # only the 2 videos
+    assert dlg._items[0].status == "skipped"  # a.mp4
+    assert dlg._items[1].status == "pending"  # b.mp4
+    assert dlg.btn_run.isEnabled()
+
+
+def test_dialog_remove_selected_trims_queue(qapp, tmp_path):
+    (tmp_path / "a.mp4").write_bytes(b"x")
+    (tmp_path / "b.mp4").write_bytes(b"x")
+    dlg, _ = _dialog_with_controls(tmp_path)
+    dlg._populate(str(tmp_path))
+    dlg.table.selectRow(0)
+    dlg._remove_selected()
+    assert dlg.table.rowCount() == 1
+    assert [Path(i.video_path).name for i in dlg._items] == ["b.mp4"]
+
+
+def test_dialog_run_calls_controller(qapp, tmp_path, monkeypatch):
+    (tmp_path / "a.mp4").write_bytes(b"x")
+    dlg, _ = _dialog_with_controls(tmp_path)
+    dlg._populate(str(tmp_path))
+    captured = {}
+    monkeypatch.setattr(dlg._controller, "run",
+                        lambda items, settings: captured.update(n=len(items), s=settings))
+    dlg._run()
+    assert captured["n"] == 1
+    assert captured["s"].method == dlg._controls.stack_controls.method()
