@@ -246,3 +246,41 @@ def test_run_starts_extraction_for_first_item(qapp, tmp_path):
     ctrl.run([BatchItem(v)], _settings(export))
     assert started == [0]
     assert ext.calls and ext.calls[0][0] == v and ext.calls[0][2] == 1
+
+
+def test_happy_path_single_video(qapp, tmp_path, monkeypatch):
+    from stackant import batch_controller as bc
+    from stackant.batch import BatchItem
+    from stackant.frame_filter import FrameScore
+
+    monkeypatch.setattr(
+        bc, "score_frames",
+        lambda frames, progress_callback=None: [FrameScore(i, p, 100.0)
+                                                for i, p in enumerate(frames)],
+    )
+    tiff_calls, jpeg_calls = [], []
+    monkeypatch.setattr(bc, "export_tiff", lambda s, d: tiff_calls.append((s, d)))
+    monkeypatch.setattr(bc, "export_jpeg",
+                        lambda s, d, quality=95: jpeg_calls.append((s, d, quality)))
+    removed = []
+    monkeypatch.setattr(bc.tempfiles, "remove_temp_dir", lambda p: removed.append(p))
+
+    v = str(tmp_path / "a.mp4"); (tmp_path / "a.mp4").write_bytes(b"x")
+    export = {"tiff": True, "jpeg": True, "quality": 90}
+    ctrl, ext, foc, pyr = _make_controller()
+    summary = {}
+    ctrl.batch_finished.connect(lambda s: summary.update(s))
+    item = BatchItem(v)
+    ctrl.run([item], _settings(export))
+
+    ext.finish(["f0.tif", "f1.tif", "f2.tif"])
+    assert foc.calls, "focus stacker should have been launched"
+    kept, out, kw = foc.calls[0]
+    assert kept == ["f0.tif", "f1.tif", "f2.tif"]
+
+    foc.finish(out)
+    assert item.status == "done"
+    assert [d for _, d in tiff_calls] == [str(tmp_path / "a_stacked.tif")]
+    assert [d for _, d, _ in jpeg_calls] == [str(tmp_path / "a_stacked.jpg")]
+    assert removed, "per-video temp dir must be cleaned up"
+    assert summary["done"] == 1 and summary["total"] == 1

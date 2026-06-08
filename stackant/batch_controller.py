@@ -124,13 +124,77 @@ class BatchController(QObject):
         self._fail_item(msg)
 
     def _on_extract_done(self, frames) -> None:
-        raise NotImplementedError  # Task 7
+        if self._cancelled:
+            return
+        self.item_status.emit(self._idx, "scoring")
+        scores = [
+            s.laplacian_var
+            for s in score_frames(frames, progress_callback=self._scoring_progress)
+        ]
+        threshold = auto_threshold(scores)
+        target = self._settings.cap or suggested_decimation_target(len(scores))
+        mask = FilterState(
+            scores=scores, threshold=threshold, decimation_target=target
+        ).kept_mask()
+        kept = [p for p, keep in zip(frames, mask) if keep]
+        if not kept:  # defense-in-depth: auto_threshold makes this unreachable
+            self._fail_item("no frames kept after filtering")
+            return
+        self._kept = kept
+        self._start_stack()
+
+    def _scoring_progress(self, done: int, total: int) -> None:
+        self.item_progress.emit(self._idx, 40 + int(15 * done / max(1, total)))
+        QApplication.processEvents()
+
+    def _start_stack(self) -> None:
+        item = self._items[self._idx]
+        item.step = "stack"
+        assert self._temp_dir is not None
+        self._stack_out = str(self._temp_dir / "stacked.tif")
+        method = self._settings.method
+        if method == "auto":
+            w, h = _first_frame_size(self._kept[0])
+            method = choose_method(len(self._kept), w, h)
+            self.log.emit(f"[auto] {method} for {len(self._kept)} frames at {w}x{h}")
+        self.item_status.emit(self._idx, f"stacking ({method})")
+        if method == "pyramid":
+            self._pyramid.stack(self._kept, self._stack_out, **self._settings.pyramid_params)
+        else:
+            self._focus.stack(self._kept, self._stack_out, **self._settings.focus_params)
 
     def _on_stack_progress(self, pct: int) -> None:
         self.item_progress.emit(self._idx, 55 + int(pct * 0.35))
 
     def _on_stack_done(self, out_path: str) -> None:
-        raise NotImplementedError  # Task 7
+        if self._cancelled:
+            return
+        self._export(out_path)
+
+    def _export(self, stacked: str) -> None:
+        item = self._items[self._idx]
+        item.step = "export"
+        self.item_status.emit(self._idx, "exporting")
+        written: list[str] = []
+        try:
+            for target in output_targets(item.video_path, self._settings.export):
+                if target.exists():
+                    continue
+                if target.suffix == ".tif":
+                    export_tiff(stacked, str(target))
+                else:
+                    export_jpeg(stacked, str(target), quality=self._settings.export["quality"])
+                written.append(str(target))
+        except OSError as exc:
+            self._fail_item(f"export failed: {exc}")
+            return
+        item.status = "done"
+        item.output_paths = written
+        item.message = ", ".join(Path(w).name for w in written) or "already present"
+        self.item_progress.emit(self._idx, 100)
+        self.item_finished.emit(self._idx, "done", item.message)
+        self._cleanup_temp()
+        self._advance()
 
     def _on_stack_failed(self, msg: str) -> None:
         raise NotImplementedError  # Task 8
@@ -143,3 +207,12 @@ class BatchController(QObject):
         self.item_finished.emit(self._idx, "failed", item.message)
         self._cleanup_temp()
         self._advance()
+
+
+def _first_frame_size(path: str) -> tuple[int, int]:
+    try:
+        from PIL import Image
+        with Image.open(path) as im:
+            return im.size
+    except Exception:
+        return 1920, 1080
