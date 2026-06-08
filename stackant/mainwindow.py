@@ -118,6 +118,12 @@ class MainWindow(QMainWindow):
         self.act_open_folder.triggered.connect(self.controls._pick_folder)
         m_file.addAction(self.act_open_folder)
 
+        self.act_batch = QAction("&Batch…", self)
+        self.act_batch.setShortcut("Ctrl+B")
+        self.act_batch.setStatusTip("Process every video in a folder unattended")
+        self.act_batch.triggered.connect(self._open_batch_dialog)
+        m_file.addAction(self.act_batch)
+
         m_file.addSeparator()
 
         self.act_export = QAction("&Export stacked image…", self)
@@ -138,6 +144,11 @@ class MainWindow(QMainWindow):
         self.controls.set_busy(busy)
         self.act_open_video.setEnabled(not busy)
         self.act_open_folder.setEnabled(not busy)
+
+    def _open_batch_dialog(self) -> None:
+        from .widgets.batch_dialog import BatchDialog
+
+        BatchDialog(self.controls, self).exec()
 
     def _apply_saved_defaults(self) -> None:
         geom, state = settings.load_window_state()

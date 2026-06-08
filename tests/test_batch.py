@@ -453,3 +453,16 @@ def test_dialog_run_calls_controller(qapp, tmp_path, monkeypatch):
     dlg._run()
     assert captured["n"] == 1
     assert captured["s"].method == dlg._controls.stack_controls.method()
+
+
+def test_mainwindow_has_batch_action_that_builds_dialog(qapp):
+    from stackant.mainwindow import MainWindow
+    from stackant.widgets.batch_dialog import BatchDialog
+    w = MainWindow(tool_statuses=None)
+    try:
+        assert hasattr(w, "act_batch")
+        assert "Batch" in w.act_batch.text()
+        dlg = BatchDialog(w.controls, w)
+        assert dlg.table.rowCount() == 0
+    finally:
+        w.close()
