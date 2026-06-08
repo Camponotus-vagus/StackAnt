@@ -284,3 +284,80 @@ def test_happy_path_single_video(qapp, tmp_path, monkeypatch):
     assert [d for _, d, _ in jpeg_calls] == [str(tmp_path / "a_stacked.jpg")]
     assert removed, "per-video temp dir must be cleaned up"
     assert summary["done"] == 1 and summary["total"] == 1
+
+
+def test_extract_failure_isolates_and_continues(qapp, tmp_path, monkeypatch):
+    from stackant import batch_controller as bc
+    from stackant.batch import BatchItem
+    monkeypatch.setattr(bc.tempfiles, "remove_temp_dir", lambda p: None)
+    v1 = str(tmp_path / "a.mp4"); (tmp_path / "a.mp4").write_bytes(b"x")
+    v2 = str(tmp_path / "b.mp4"); (tmp_path / "b.mp4").write_bytes(b"x")
+    export = {"tiff": True, "jpeg": False, "quality": 95}
+    ctrl, ext, foc, pyr = _make_controller()
+    items = [BatchItem(v1), BatchItem(v2)]
+    ctrl.run(items, _settings(export))
+    ext.fail("ffmpeg produced no frames.")
+    assert items[0].status == "failed"
+    assert ext.calls[-1][0] == v2, "queue must continue to video 2"
+
+
+def test_opencl_failure_retries_once_on_cpu(qapp, tmp_path, monkeypatch):
+    from stackant import batch_controller as bc
+    from stackant.batch import BatchItem
+    from stackant.frame_filter import FrameScore
+    monkeypatch.setattr(bc, "score_frames",
+                        lambda frames, progress_callback=None:
+                        [FrameScore(i, p, 100.0 + i) for i, p in enumerate(frames)])
+    monkeypatch.setattr(bc.tempfiles, "remove_temp_dir", lambda p: None)
+    v = str(tmp_path / "a.mp4"); (tmp_path / "a.mp4").write_bytes(b"x")
+    ctrl, ext, foc, pyr = _make_controller()
+    ctrl.run([BatchItem(v)], _settings({"tiff": True, "jpeg": False, "quality": 95}))
+    ext.finish(["f0.tif"])
+    assert len(foc.calls) == 1 and "--no-opencl" not in foc.calls[0][2]["extra_cli"]
+    foc.fail("Failed to execute OpenCL kernel")
+    assert len(foc.calls) == 2, "should retry once"
+    assert "--no-opencl" in foc.calls[1][2]["extra_cli"]
+    failed = []
+    ctrl.item_finished.connect(lambda i, st, m: failed.append(st))
+    foc.fail("Failed to execute OpenCL kernel")
+    assert "failed" in failed and len(foc.calls) == 2
+
+
+def test_non_opencl_failure_does_not_retry(qapp, tmp_path, monkeypatch):
+    from stackant import batch_controller as bc
+    from stackant.batch import BatchItem
+    from stackant.frame_filter import FrameScore
+    monkeypatch.setattr(bc, "score_frames",
+                        lambda frames, progress_callback=None:
+                        [FrameScore(i, p, 100.0 + i) for i, p in enumerate(frames)])
+    monkeypatch.setattr(bc.tempfiles, "remove_temp_dir", lambda p: None)
+    v = str(tmp_path / "a.mp4"); (tmp_path / "a.mp4").write_bytes(b"x")
+    ctrl, ext, foc, pyr = _make_controller()
+    items = [BatchItem(v)]
+    ctrl.run(items, _settings({"tiff": True, "jpeg": False, "quality": 95}))
+    ext.finish(["f0.tif"])
+    foc.fail("focus-stack exited with code 1:\nFile not found")
+    assert len(foc.calls) == 1 and items[0].status == "failed"
+
+
+def test_cancel_mid_stack_stops_without_advancing(qapp, tmp_path, monkeypatch):
+    from stackant import batch_controller as bc
+    from stackant.batch import BatchItem
+    from stackant.frame_filter import FrameScore
+    monkeypatch.setattr(bc, "score_frames",
+                        lambda frames, progress_callback=None:
+                        [FrameScore(i, p, 100.0 + i) for i, p in enumerate(frames)])
+    monkeypatch.setattr(bc.tempfiles, "remove_temp_dir", lambda p: None)
+    v1 = str(tmp_path / "a.mp4"); (tmp_path / "a.mp4").write_bytes(b"x")
+    v2 = str(tmp_path / "b.mp4"); (tmp_path / "b.mp4").write_bytes(b"x")
+    ctrl, ext, foc, pyr = _make_controller()
+    items = [BatchItem(v1), BatchItem(v2)]
+    summary = {}
+    ctrl.batch_finished.connect(lambda s: summary.update(s))
+    ctrl.run(items, _settings({"tiff": True, "jpeg": False, "quality": 95}))
+    ext.finish(["f0.tif"])
+    assert foc.is_running
+    ctrl.cancel()
+    assert items[0].status == "cancelled"
+    assert items[1].status == "pending", "must not advance to video 2"
+    assert summary.get("cancelled") == 1

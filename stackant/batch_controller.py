@@ -197,7 +197,20 @@ class BatchController(QObject):
         self._advance()
 
     def _on_stack_failed(self, msg: str) -> None:
-        raise NotImplementedError  # Task 8
+        if self._cancelled:
+            return
+        params = self._settings.focus_params
+        if not self._item_retried and should_retry_without_opencl(
+            msg, compare_mode=False, already_retried=self._item_retried,
+            extra_cli=params.get("extra_cli", ""),
+        ):
+            self._item_retried = True
+            retry = {**params,
+                     "extra_cli": ("--no-opencl " + params.get("extra_cli", "")).strip()}
+            self.log.emit("[auto] OpenCL failure; retrying on CPU with --no-opencl")
+            self._focus.stack(self._kept, self._stack_out, **retry)
+            return
+        self._fail_item(msg)
 
     def _fail_item(self, msg: str) -> None:
         item = self._items[self._idx]
