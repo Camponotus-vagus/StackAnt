@@ -25,7 +25,7 @@ class ExportControls(QGroupBox):
         super().__init__("Export", parent)
         self._default_folder: str = str(Path.home())
         self._build_ui()
-        self.setEnabled(False)
+        self.set_exportable(False)
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -76,6 +76,11 @@ class ExportControls(QGroupBox):
         self.btn_export = QPushButton("Export")
         self.btn_export.clicked.connect(self.export_requested.emit)
         layout.addWidget(self.btn_export)
+
+    def set_exportable(self, exportable: bool) -> None:
+        """Gate only the Export button. Formats/quality/name/folder stay editable
+        so they can be dialed in before stacking (single mode) or for a batch."""
+        self.btn_export.setEnabled(exportable)
 
     def _sync_quality_enabled(self, on: bool) -> None:
         self.sld_quality.setEnabled(on)

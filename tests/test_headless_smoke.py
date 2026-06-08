@@ -95,7 +95,10 @@ class TestInitialState:
         assert not win.controls.stack_controls.btn_stack.isEnabled(), "Stack should be disabled on start"
 
     def test_export_disabled_on_start(self, win):
-        assert not win.controls.export_controls.isEnabled(), "Export should be disabled on start"
+        ec = win.controls.export_controls
+        assert not ec.btn_export.isEnabled(), "Export button gated before a stack exists"
+        assert ec.txt_folder.isEnabled(), "Export folder must be editable up front (batch)"
+        assert ec.chk_tiff.isEnabled(), "Export format must be editable up front (batch)"
 
     def test_restack_disabled_on_start(self, win):
         assert not win.preview_panel.btn_restack.isEnabled(), "Re-stack should be disabled on start"
@@ -111,7 +114,7 @@ class TestVideoLoad:
         assert win.controls.btn_extract.isEnabled(), "Extract should enable after video load"
         assert not win.controls.filter_controls.btn_auto.isEnabled(), "Threshold still gated after video load"
         assert not win.controls.stack_controls.btn_stack.isEnabled(), "Stack still disabled after video load"
-        assert not win.controls.export_controls.isEnabled(), "Export still disabled after video load"
+        assert not win.controls.export_controls.btn_export.isEnabled(), "Export still gated after video load"
 
     def test_filmstrip_cleared_on_new_video(self, win):
         """Opening new video should clear the filmstrip."""
@@ -138,10 +141,10 @@ class TestVideoLoad:
     def test_stacked_output_cleared_on_new_video(self, win):
         """Stale stacked output + enabled Export must be cleared when loading a new video."""
         win._stacked_output = "/tmp/stale.tif"
-        win.controls.export_controls.setEnabled(True)
+        win.controls.export_controls.set_exportable(True)
         load_video(win)
         assert win._stacked_output is None
-        assert not win.controls.export_controls.isEnabled()
+        assert not win.controls.export_controls.btn_export.isEnabled()
 
 
 class TestExtractionFlow:
@@ -321,7 +324,7 @@ class TestStackControls:
 
 class TestExportControls:
     def test_export_disabled_before_stack(self, win):
-        assert not win.controls.export_controls.isEnabled()
+        assert not win.controls.export_controls.btn_export.isEnabled()
 
     def test_export_enabled_after_stack_done(self, win):
         """Simulate _on_stack_done: export controls should enable."""
@@ -331,7 +334,7 @@ class TestExportControls:
         try:
             win._on_stack_done(fname)
             pump(20)
-            assert win.controls.export_controls.isEnabled(), "Export must enable after stack completes"
+            assert win.controls.export_controls.btn_export.isEnabled(), "Export must enable after stack completes"
         finally:
             Path(fname).unlink(missing_ok=True)
 

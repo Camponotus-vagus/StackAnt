@@ -251,7 +251,7 @@ class MainWindow(QMainWindow):
         self.preview_panel.clear()
         self.controls.filter_controls.set_scored(False)
         self.controls.stack_controls.set_ready(False)
-        self.controls.export_controls.setEnabled(False)
+        self.controls.export_controls.set_exportable(False)
 
     def _on_video_selected(self, path: str) -> None:
         self._reset_pipeline_state()
@@ -481,7 +481,7 @@ class MainWindow(QMainWindow):
         else:
             self._stacked_output = output_path
             self.preview_panel.show_stacked(output_path)
-            self.controls.export_controls.setEnabled(True)
+            self.controls.export_controls.set_exportable(True)
             if self.controls.input_path:
                 self.controls.export_controls.prefill_for_input(self.controls.input_path)
 
@@ -566,7 +566,7 @@ class MainWindow(QMainWindow):
             return
         self._stacked_output = output_path
         self.preview_panel.show_stacked(output_path)
-        self.controls.export_controls.setEnabled(True)
+        self.controls.export_controls.set_exportable(True)
         if self.controls.input_path:
             self.controls.export_controls.prefill_for_input(self.controls.input_path)
 
@@ -637,7 +637,7 @@ class MainWindow(QMainWindow):
         target = self._compare_outputs["pyramid"] or self._compare_outputs["focus-stack"]
         if target:
             self._stacked_output = target
-            self.controls.export_controls.setEnabled(True)
+            self.controls.export_controls.set_exportable(True)
             if self.controls.input_path:
                 self.controls.export_controls.prefill_for_input(self.controls.input_path)
 
