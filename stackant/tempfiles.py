@@ -22,3 +22,17 @@ def cleanup_all() -> None:
 
 
 atexit.register(cleanup_all)
+
+
+def remove_temp_dir(path) -> None:
+    """Delete one tracked temp dir now and stop tracking it.
+
+    The batch processor cleans up after each video so disk use stays bounded
+    to roughly one video's frames at a time.
+    """
+    p = Path(path)
+    shutil.rmtree(p, ignore_errors=True)
+    try:
+        _TRACKED.remove(p)
+    except ValueError:
+        pass
