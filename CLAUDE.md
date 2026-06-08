@@ -13,8 +13,8 @@ Full roadmap is in `docs/PLAN.md`. Do not repeat it here.
 
 ## Current state
 
-- v0.1.0 shipped. v0.2 (Laplacian-pyramid backend) and v0.3 (batch
-  processing) have both landed on `main`.
+- v0.3.0 is the current release — it bundles the v0.2 Laplacian-pyramid
+  backend and v0.3 batch processing on top of the v0.1.0 baseline.
 - Two stacking backends: `focus-stack` CLI and an in-process
   Laplacian-pyramid stacker (`stackant/pyramid_stacker.py`, worker
   `QThread`, guided-filter-smoothed weights). Method radio in
@@ -46,6 +46,7 @@ stackant/
   settings.py              QSettings load/save wrappers
   tempfiles.py             temp-dir tracking + cleanup
   preview.py               Stacked-image display + crop
+  thumbnails.py            Pillow-based filmstrip thumbnail rendering
   exporter.py              TIFF + JPEG save
   config.py                Defaults and constants
   widgets/                 controls + stack/filter/export controls,

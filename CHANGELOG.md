@@ -5,7 +5,7 @@ All notable changes to this project will be documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.0] — Unreleased
+## [0.3.0] — 2026-06-08
 
 ### Added
 
@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   *actions* (Auto-threshold, Export) stay gated. This makes batch settings reachable
   up front and lets single-mode users pre-stage their export.
 
-## [0.2.0] — Unreleased
+## [0.2.0] — 2026-04-23
 
 ### Added
 
@@ -125,21 +125,6 @@ First functional release.
   the "Disable OpenCL (GPU)" toggle in Advanced is the workaround.
 
 ## Roadmap
-
-### [0.2] — planned
-
-- **Laplacian-pyramid stacking:** second in-process backend alongside
-  `focus-stack`, using guided-filter-smoothed sharpness weight maps
-  per pyramid level. Same algorithm family as Helicon Focus Method C
-  and Zerene PMax. Targets cleaner edges on hard contrast boundaries
-  (legs, antennae against bright backgrounds) — the main documented
-  weakness of `focus-stack`'s wavelet approach.
-
-### [0.3] — planned
-
-- **Batch processing:** queue multiple videos, dial in settings once,
-  run the whole extract → score → filter → stack → export pipeline on
-  each in sequence with per-video + overall progress.
 
 ### [0.4] — planned
 

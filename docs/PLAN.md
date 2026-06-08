@@ -14,25 +14,36 @@ composite image.
 
 ```
 stackant/
-├── main.py                  # Entry point
+├── main.py                  # Entry point (thin)
 ├── requirements.txt
+├── requirements-dev.txt
 ├── README.md
+├── CHANGELOG.md
 ├── LICENSE
 ├── assets/
-│   └── icon.png
+│   ├── icon.png
+│   └── screenshot.png
 ├── stackant/
 │   ├── __init__.py
 │   ├── app.py               # QApplication setup
-│   ├── mainwindow.py        # Main window and layout
+│   ├── mainwindow.py        # Main window, layout, signal wiring
 │   ├── dependency_checker.py
 │   ├── frame_extractor.py   # ffmpeg wrapper
 │   ├── frame_filter.py      # Laplacian blur detection + decimation
 │   ├── stacker.py           # focus-stack wrapper
-│   ├── preview.py           # Thumbnail and crop preview logic
+│   ├── pyramid_stacker.py   # in-process Laplacian-pyramid stacker
+│   ├── stacking.py          # Auto-method heuristic
+│   ├── batch.py             # batch pure helpers + value types
+│   ├── batch_controller.py  # sequential batch state machine
+│   ├── folder_loader.py     # image-folder input
+│   ├── settings.py          # QSettings load/save
+│   ├── tempfiles.py         # temp-dir tracking + cleanup
+│   ├── preview.py           # Stacked-image display + crop
+│   ├── thumbnails.py        # filmstrip thumbnail rendering
 │   ├── exporter.py          # TIFF + JPEG export
-│   └── config.py            # Default parameters and constants
-└── tests/
-    └── test_frame_filter.py
+│   ├── config.py            # Default parameters and constants
+│   └── widgets/             # controls, filmstrip, log, preview, batch dialog
+└── tests/                   # pytest (headless Qt, offscreen)
 ```
 
 ## Sessions
@@ -98,7 +109,7 @@ PREVIEW_MAX_PX = 800
 
 ## Roadmap
 
-### v0.2 — Laplacian-pyramid stacking
+### v0.2 — Laplacian-pyramid stacking ✅ shipped (0.2.0)
 
 Second in-process stacking backend alongside `focus-stack`, using
 guided-filter-smoothed sharpness weight maps per pyramid level. Same
@@ -107,7 +118,7 @@ cleaner edges on hard contrast boundaries (legs, antennae against
 bright backgrounds) — the main documented weakness of `focus-stack`'s
 wavelet approach.
 
-### v0.3 — Batch processing
+### v0.3 — Batch processing ✅ shipped (0.3.0)
 
 Queue multiple videos, dial in settings once, run extract → score →
 filter → stack → export on each in sequence. Per-video auto-threshold

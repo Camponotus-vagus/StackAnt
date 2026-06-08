@@ -24,13 +24,20 @@ focus — all without manually picking and stacking frames.
   frames; a slider tunes the threshold live.
 - Even-spaced decimation caps the set at a target frame count (~75 by
   default) before stacking.
-- Stack via [`focus-stack`](https://github.com/PetteriAimonen/focus-stack)
-  with defaults that work out of the box and an Advanced panel for the
-  rest.
+- Stack with either an in-process **Laplacian-pyramid** backend (pure
+  Python/NumPy/OpenCV, the default) or
+  [`focus-stack`](https://github.com/PetteriAimonen/focus-stack) — pick
+  one with the method radio, let **Auto** choose by stack size and
+  resolution, or hit **Compare** to run both and toggle between the
+  results. Defaults work out of the box, with an Advanced panel for the rest.
 - Preview the result at a scaled size, draw a rectangle to inspect any
   region at 1:1, and toggle between the stacked output and a selected
   input frame for comparison.
 - Export to TIFF (lossless) and/or JPEG (quality 60–100).
+- **Batch mode** (`File ▸ Batch…`): point it at a folder and it runs the
+  whole extract → score → filter → stack → export pipeline on every video
+  in sequence, writing each composite next to its source and skipping ones
+  already done.
 - Keyboard shortcuts, persistent settings, cancellable subprocesses.
 
 ## Why StackAnt?
@@ -116,20 +123,26 @@ python main.py
 3. StackAnt scores each frame, auto-picks a blur threshold, and flags
    unusable frames in red. Nudge the slider or double-click (or press
    **Space**) any frame to override.
-4. Click **Stack Frames**. `focus-stack` runs in the background and its
-   output streams to the collapsible log panel.
+4. Pick a stacking **method** (Pyramid, focus-stack, or Auto) and click
+   **Stack Frames**. The chosen backend runs in the background and its
+   output streams to the collapsible log panel; **Compare** runs both and
+   shows the two results with a view toggle.
 5. The composite appears in the preview pane. Drag a rectangle to see a
    1:1 detail. Toggle between the stacked result and any input frame
    with the button above the preview.
 6. **Export** to TIFF and/or JPEG with a single click. Output folder
    opens automatically on success.
 
+To process many videos unattended, use **File ▸ Batch…**: it takes the
+current settings once and runs the full pipeline on every video in a
+folder, writing each composite alongside its source.
+
 ## Development
 
 ```bash
 pip install -r requirements-dev.txt
-pytest                # 29 unit tests
-ruff check stackant
+pytest                # unit + headless-smoke tests
+ruff check stackant tests
 ```
 
 The codebase is split cleanly between pure-logic modules (frame_filter,
@@ -138,12 +151,11 @@ so most logic has non-Qt tests.
 
 ## Roadmap
 
-- **v0.2 — Laplacian-pyramid fusion:** a pure-Python stacking method
-  alongside `focus-stack`, targeting cleaner edges on hard contrast
-  boundaries (legs, antennae against sky). Same algorithm family
-  commercial tools (Helicon "Method C", Zerene "PMax") use.
-- **v0.3 — Batch processing:** queue multiple videos, dial in settings
-  once, run the full pipeline on each in sequence.
+Shipped so far: **v0.2 — Laplacian-pyramid fusion** (a pure-Python
+stacking method alongside `focus-stack`, same algorithm family as Helicon
+"Method C" and Zerene "PMax") and **v0.3 — Batch processing** (queue a
+folder of videos and run the full pipeline on each). Next up:
+
 - **v0.4 — Polish:** optional input downscaling for
   memory-constrained integrated GPUs, reproducibility manifest on
   export, Windows end-to-end validation.
