@@ -29,7 +29,6 @@ class _PreviewLabel(QLabel):
         super().__init__(parent)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        self.setStyleSheet("background-color: #2b2b2b;")
         self._origin = None
         self._rubber = QRubberBand(QRubberBand.Shape.Rectangle, self)
 
@@ -106,6 +105,10 @@ class PreviewPanel(QWidget):
         self.preview_label.crop_cleared.connect(self._on_crop_cleared)
         preview_container = QFrame()
         preview_container.setFrameShape(QFrame.Shape.StyledPanel)
+        preview_container.setObjectName("previewContainer")
+        preview_container.setStyleSheet(
+            "QFrame#previewContainer { background-color: #2b2b2b; border: 1px solid #444; }"
+        )
         pc = QVBoxLayout(preview_container)
         pc.setContentsMargins(4, 4, 4, 4)
         pc.addWidget(self.preview_label, alignment=Qt.AlignmentFlag.AlignCenter)
@@ -128,9 +131,13 @@ class PreviewPanel(QWidget):
 
         self.detail_scroll = QScrollArea()
         self.detail_scroll.setWidgetResizable(False)
+        self.detail_scroll.setStyleSheet(
+            "QScrollArea { background-color: #1e1e1e; border: 1px solid #444; }"
+            "QScrollArea > QWidget > QWidget { background-color: #1e1e1e; }"
+        )
         self.detail_label = QLabel()
         self.detail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.detail_label.setStyleSheet("background-color: #1e1e1e; color: gray;")
+        self.detail_label.setStyleSheet("background: transparent; color: gray;")
         self.detail_label.setText("Draw a rectangle on the preview above to see it 1:1.")
         self.detail_scroll.setWidget(self.detail_label)
         root.addWidget(self.detail_scroll, stretch=2)
