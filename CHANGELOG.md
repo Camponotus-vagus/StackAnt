@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   *actions* (Auto-threshold, Export) stay gated. This makes batch settings reachable
   up front and lets single-mode users pre-stage their export.
 
-## [0.2.0] — 2026-06-08
+## [0.2.0] — 2026-04-23
 
 ### Added
 
@@ -119,7 +119,7 @@ First functional release.
   both separately.
 - Windows testing is unverified on the v0.1.0 dev machine (Linux Mint);
   the code is written to be portable but bug reports welcome.
-- Single-file processing only — batch mode is planned for v0.3.
+- Single-file processing only — batch mode is planned for v1.1.
 - On very weak integrated GPUs (e.g. Intel Apollo Lake HD 500),
   `focus-stack`'s OpenCL kernels exhaust shared local memory and crash;
   the "Disable OpenCL (GPU)" toggle in Advanced is the workaround.
