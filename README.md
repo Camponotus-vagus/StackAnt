@@ -11,6 +11,10 @@ single publication-ready composite in which the whole specimen is in
 focus — all without manually picking and stacking frames.
 
 <p align="center">
+  <img src="assets/demo.gif" alt="A focus-pull video of an ant resolving into a single fully-focused composite" width="720" />
+</p>
+
+<p align="center">
   <img src="assets/screenshot.png" alt="StackAnt in action — filmstrip on the left, stacked ant specimen with crop detail on the right" />
 </p>
 
