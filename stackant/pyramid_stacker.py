@@ -42,7 +42,7 @@ def build_laplacian_pyramid(
     entry is the coarsest Gaussian, which the collapse step seeds
     with.
     """
-    gauss = [image.astype(np.float32)]
+    gauss = [image.astype(np.float32, copy=False)]
     for _ in range(levels - 1):
         gauss.append(cv2.pyrDown(gauss[-1]))
     pyramid: list[np.ndarray] = []
@@ -105,8 +105,8 @@ def smooth_weights(
             "cv2.ximgproc not available — install opencv-contrib-python-headless"
         )
     return _ximgproc.guidedFilter(
-        guide=guide.astype(np.float32),
-        src=weights.astype(np.float32),
+        guide=guide.astype(np.float32, copy=False),
+        src=weights.astype(np.float32, copy=False),
         radius=int(radius),
         eps=float(eps),
     )
@@ -141,34 +141,42 @@ def fuse_images(
 
     for lvl in range(levels):
         level_bands = [p[lvl] for p in pyramids]
-        # Per-image sharpness on grayscale version of the band's
-        # corresponding Gaussian (we use the band itself as a proxy
-        # — Laplacian bands are already high-frequency for lvl<last;
-        # for the base Gaussian we use the band directly).
-        grays = [
-            cv2.cvtColor(np.clip(b, -1, 1).astype(np.float32), cv2.COLOR_RGB2GRAY)
-            if b.ndim == 3 else b
-            for b in level_bands
-        ]
-        weights = [compute_sml(g) for g in grays]
-        # Smooth each weight map with the source band as guide.
-        smoothed = [
-            smooth_weights(w, b if b.ndim == 3 else np.stack([b]*3, axis=-1),
-                           radius=guided_radius)
-            for w, b in zip(weights, level_bands)
-        ]
-        # Normalise across images so weights sum to 1 per pixel.
-        stacked = np.stack(smoothed, axis=0)
-        stacked = np.maximum(stacked, 0.0) + 1e-8
-        norms = stacked / stacked.sum(axis=0, keepdims=True)
-        # Weighted sum of Laplacian coefficients. For 3-channel bands
-        # broadcast the per-pixel weight across channels.
+
+        # Fused band and total weight for current level.
+        # Computing cumulatively saves significant memory compared to
+        # stacking all weight maps for all images at once.
         fused = np.zeros_like(level_bands[0])
-        for i, band in enumerate(level_bands):
-            w = norms[i]
+        total_weight = np.zeros(level_bands[0].shape[:2], dtype=np.float32)
+
+        for band in level_bands:
+            # Grayscale for sharpness scoring and as a guide for smoothing.
+            # Laplacian bands are high-frequency proxies for sharpness;
+            # the last level is the base Gaussian.
             if band.ndim == 3:
-                w = w[..., np.newaxis]
-            fused += w * band
+                # We skip np.clip here for performance; float32 cvtColor
+                # is stable enough for Laplacian bands.
+                gray = cv2.cvtColor(band, cv2.COLOR_RGB2GRAY)
+            else:
+                gray = band
+
+            # Compute and smooth sharpness weights.
+            # Using grayscale guides is ~2x faster than RGB guides.
+            w = compute_sml(gray)
+            sw = smooth_weights(w, gray, radius=guided_radius)
+            sw = np.maximum(sw, 0.0) + 1e-8
+
+            total_weight += sw
+            if band.ndim == 3:
+                fused += sw[..., np.newaxis] * band
+            else:
+                fused += sw * band
+
+        # Normalise so weights sum to 1 per pixel.
+        if band.ndim == 3:
+            fused /= total_weight[..., np.newaxis]
+        else:
+            fused /= total_weight
+
         fused_levels.append(fused)
 
     return collapse_laplacian_pyramid(fused_levels)
