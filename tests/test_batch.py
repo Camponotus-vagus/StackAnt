@@ -12,6 +12,13 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import QApplication
 
 from stackant import tempfiles
+from stackant.batch import (
+    BatchItem,
+    BatchSettings,
+    discover_videos,
+    is_already_done,
+    output_targets,
+)
 
 
 def test_remove_temp_dir_deletes_and_untracks():
@@ -27,16 +34,6 @@ def test_remove_temp_dir_is_safe_on_unknown_path():
     d = tempfiles.make_temp_dir()
     tempfiles.remove_temp_dir(d)
     tempfiles.remove_temp_dir(d)  # second call: already gone, still no error
-
-
-from stackant.batch import (
-    VIDEO_EXTENSIONS,
-    BatchItem,
-    BatchSettings,
-    discover_videos,
-    is_already_done,
-    output_targets,
-)
 
 
 def _make_mixed_folder(root: Path) -> None:
@@ -217,8 +214,10 @@ def _settings(export):
 
 def test_skip_already_done_items(qapp, tmp_path):
     from stackant.batch import BatchItem
-    v1 = str(tmp_path / "a.mp4"); (tmp_path / "a.mp4").write_bytes(b"x")
-    v2 = str(tmp_path / "b.mp4"); (tmp_path / "b.mp4").write_bytes(b"x")
+    v1 = str(tmp_path / "a.mp4")
+    (tmp_path / "a.mp4").write_bytes(b"x")
+    v2 = str(tmp_path / "b.mp4")
+    (tmp_path / "b.mp4").write_bytes(b"x")
     (tmp_path / "a_stacked.tif").write_bytes(b"x")
     export = {"tiff": True, "jpeg": False, "quality": 95}
 
@@ -235,7 +234,8 @@ def test_skip_already_done_items(qapp, tmp_path):
 
 def test_run_starts_extraction_for_first_item(qapp, tmp_path):
     from stackant.batch import BatchItem
-    v = str(tmp_path / "a.mp4"); (tmp_path / "a.mp4").write_bytes(b"x")
+    v = str(tmp_path / "a.mp4")
+    (tmp_path / "a.mp4").write_bytes(b"x")
     export = {"tiff": True, "jpeg": False, "quality": 95}
     ctrl, ext, foc, pyr = _make_controller()
     started = []
@@ -262,7 +262,8 @@ def test_happy_path_single_video(qapp, tmp_path, monkeypatch):
     removed = []
     monkeypatch.setattr(bc.tempfiles, "remove_temp_dir", lambda p: removed.append(p))
 
-    v = str(tmp_path / "a.mp4"); (tmp_path / "a.mp4").write_bytes(b"x")
+    v = str(tmp_path / "a.mp4")
+    (tmp_path / "a.mp4").write_bytes(b"x")
     export = {"tiff": True, "jpeg": True, "quality": 90}
     ctrl, ext, foc, pyr = _make_controller()
     summary = {}
@@ -288,8 +289,10 @@ def test_extract_failure_isolates_and_continues(qapp, tmp_path, monkeypatch):
     from stackant import batch_controller as bc
     from stackant.batch import BatchItem
     monkeypatch.setattr(bc.tempfiles, "remove_temp_dir", lambda p: None)
-    v1 = str(tmp_path / "a.mp4"); (tmp_path / "a.mp4").write_bytes(b"x")
-    v2 = str(tmp_path / "b.mp4"); (tmp_path / "b.mp4").write_bytes(b"x")
+    v1 = str(tmp_path / "a.mp4")
+    (tmp_path / "a.mp4").write_bytes(b"x")
+    v2 = str(tmp_path / "b.mp4")
+    (tmp_path / "b.mp4").write_bytes(b"x")
     export = {"tiff": True, "jpeg": False, "quality": 95}
     ctrl, ext, foc, pyr = _make_controller()
     items = [BatchItem(v1), BatchItem(v2)]
@@ -307,7 +310,8 @@ def test_opencl_failure_retries_once_on_cpu(qapp, tmp_path, monkeypatch):
                         lambda frames, progress_callback=None:
                         [FrameScore(i, p, 100.0 + i) for i, p in enumerate(frames)])
     monkeypatch.setattr(bc.tempfiles, "remove_temp_dir", lambda p: None)
-    v = str(tmp_path / "a.mp4"); (tmp_path / "a.mp4").write_bytes(b"x")
+    v = str(tmp_path / "a.mp4")
+    (tmp_path / "a.mp4").write_bytes(b"x")
     ctrl, ext, foc, pyr = _make_controller()
     ctrl.run([BatchItem(v)], _settings({"tiff": True, "jpeg": False, "quality": 95}))
     ext.finish(["f0.tif"])
@@ -329,7 +333,8 @@ def test_non_opencl_failure_does_not_retry(qapp, tmp_path, monkeypatch):
                         lambda frames, progress_callback=None:
                         [FrameScore(i, p, 100.0 + i) for i, p in enumerate(frames)])
     monkeypatch.setattr(bc.tempfiles, "remove_temp_dir", lambda p: None)
-    v = str(tmp_path / "a.mp4"); (tmp_path / "a.mp4").write_bytes(b"x")
+    v = str(tmp_path / "a.mp4")
+    (tmp_path / "a.mp4").write_bytes(b"x")
     ctrl, ext, foc, pyr = _make_controller()
     items = [BatchItem(v)]
     ctrl.run(items, _settings({"tiff": True, "jpeg": False, "quality": 95}))
@@ -346,8 +351,10 @@ def test_cancel_mid_stack_stops_without_advancing(qapp, tmp_path, monkeypatch):
                         lambda frames, progress_callback=None:
                         [FrameScore(i, p, 100.0 + i) for i, p in enumerate(frames)])
     monkeypatch.setattr(bc.tempfiles, "remove_temp_dir", lambda p: None)
-    v1 = str(tmp_path / "a.mp4"); (tmp_path / "a.mp4").write_bytes(b"x")
-    v2 = str(tmp_path / "b.mp4"); (tmp_path / "b.mp4").write_bytes(b"x")
+    v1 = str(tmp_path / "a.mp4")
+    (tmp_path / "a.mp4").write_bytes(b"x")
+    v2 = str(tmp_path / "b.mp4")
+    (tmp_path / "b.mp4").write_bytes(b"x")
     ctrl, ext, foc, pyr = _make_controller()
     items = [BatchItem(v1), BatchItem(v2)]
     summary = {}
@@ -373,7 +380,8 @@ def test_cancel_during_scoring_does_not_launch_stack(qapp, tmp_path, monkeypatch
 
     monkeypatch.setattr(bc, "score_frames", fake_score)
     monkeypatch.setattr(bc.tempfiles, "remove_temp_dir", lambda p: None)
-    v = str(tmp_path / "a.mp4"); (tmp_path / "a.mp4").write_bytes(b"x")
+    v = str(tmp_path / "a.mp4")
+    (tmp_path / "a.mp4").write_bytes(b"x")
     items = [BatchItem(v)]
     summary = {}
     ctrl.batch_finished.connect(lambda s: summary.update(s))
@@ -392,7 +400,8 @@ def test_pyramid_failure_does_not_retry_on_focus(qapp, tmp_path, monkeypatch):
                         lambda frames, progress_callback=None:
                         [FrameScore(i, p, 100.0) for i, p in enumerate(frames)])
     monkeypatch.setattr(bc.tempfiles, "remove_temp_dir", lambda p: None)
-    v = str(tmp_path / "a.mp4"); (tmp_path / "a.mp4").write_bytes(b"x")
+    v = str(tmp_path / "a.mp4")
+    (tmp_path / "a.mp4").write_bytes(b"x")
     settings = BatchSettings(
         method="pyramid", extract_decimation=1, cap=None,
         focus_params={"consistency": 2, "denoise": True, "sharp_strength": 1,
