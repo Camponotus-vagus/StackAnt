@@ -1,0 +1,23 @@
+{
+  "upload_type": "software",
+  "title": "StackAnt",
+  "description": "StackAnt is a cross-platform PyQt6 desktop application that turns a manual-focus-pull video of a specimen into a focus-stacked composite image, aimed at entomologists doing macro photography. It extracts frames with ffmpeg, automatically rejects motion-blurred transition frames by Laplacian variance, and stacks either with an in-process Laplacian-pyramid method or the focus-stack CLI.",
+  "access_right": "open",
+  "license": "MIT",
+  "creators": [
+    {
+      "name": "Mensa, Francesco Simone",
+      "orcid": "0000-0002-7374-4591"
+    }
+  ],
+  "keywords": [
+    "focus stacking",
+    "macro photography",
+    "entomology",
+    "myrmecology",
+    "computational photography",
+    "image processing",
+    "scientific imaging",
+    "PyQt6"
+  ]
+}
