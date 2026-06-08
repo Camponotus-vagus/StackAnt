@@ -64,6 +64,22 @@ Two things StackAnt does that Helicon Focus and Zerene Stacker don't:
 It's also free and open-source (MIT), and the log panel records every
 subprocess command so any run is reproducible.
 
+## Examples
+
+A few Ugandan ant specimens, each stacked from a single manual-focus-pull
+video:
+
+<table>
+  <tr>
+    <td align="center" width="50%"><img src="assets/examples/ugandan-ant-01.jpg" alt="Ugandan ant specimen, lateral view" width="340"><br><sub><em>Ugandan ant 01</em></sub></td>
+    <td align="center" width="50%"><img src="assets/examples/ugandan-ant-02.jpg" alt="Ugandan ant specimen, lateral view" width="340"><br><sub><em>Ugandan ant 02</em></sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="assets/examples/ugandan-ant-03.jpg" alt="Ugandan ant specimen, lateral view" width="340"><br><sub><em>Ugandan ant 03</em></sub></td>
+    <td align="center"><img src="assets/examples/ugandan-ant-04.jpg" alt="Ugandan ant specimen, lateral view" width="340"><br><sub><em>Ugandan ant 04</em></sub></td>
+  </tr>
+</table>
+
 ## Requirements
 
 - **Python 3.10 or newer** (tested on 3.12).
