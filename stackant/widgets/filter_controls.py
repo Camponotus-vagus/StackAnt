@@ -30,7 +30,7 @@ class FilterControls(QGroupBox):
         self._current_threshold: float = 0.0
         self._muted = False
         self._build_ui()
-        self.setEnabled(False)
+        self.set_scored(False)
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -78,6 +78,13 @@ class FilterControls(QGroupBox):
         self.lbl_counts = QLabel("—")
         self.lbl_counts.setStyleSheet("color: gray;")
         layout.addWidget(self.lbl_counts)
+
+    def set_scored(self, scored: bool) -> None:
+        """Gate only the threshold controls (they need scores). The cap row,
+        which the batch processor also reads, stays editable at all times."""
+        self.sld_threshold.setEnabled(scored)
+        self.btn_auto.setEnabled(scored)
+        self.lbl_threshold_value.setEnabled(scored)
 
     def configure_range(self, min_score: float, max_score: float) -> None:
         """Set the slider's physical range from the observed score extremes."""

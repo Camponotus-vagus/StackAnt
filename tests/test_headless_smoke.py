@@ -85,7 +85,11 @@ class TestInitialState:
         assert not win.controls.btn_cancel.isEnabled(), "Cancel should be disabled on start"
 
     def test_filter_disabled_on_start(self, win):
-        assert not win.controls.filter_controls.isEnabled(), "Filter should be disabled on start"
+        fc = win.controls.filter_controls
+        assert not fc.btn_auto.isEnabled(), "Threshold controls gated before scoring"
+        assert not fc.sld_threshold.isEnabled(), "Threshold slider gated before scoring"
+        assert fc.spn_decimation_target.isEnabled(), "Cap must be editable up front (batch)"
+        assert fc.chk_decimate.isEnabled(), "Cap checkbox must be editable up front (batch)"
 
     def test_stack_disabled_on_start(self, win):
         assert not win.controls.stack_controls.btn_stack.isEnabled(), "Stack should be disabled on start"
@@ -105,7 +109,7 @@ class TestVideoLoad:
         """After video selection: extract enabled, filter/stack/export still disabled."""
         load_video(win)
         assert win.controls.btn_extract.isEnabled(), "Extract should enable after video load"
-        assert not win.controls.filter_controls.isEnabled(), "Filter still disabled after video load"
+        assert not win.controls.filter_controls.btn_auto.isEnabled(), "Threshold still gated after video load"
         assert not win.controls.stack_controls.btn_stack.isEnabled(), "Stack still disabled after video load"
         assert not win.controls.export_controls.isEnabled(), "Export still disabled after video load"
 
@@ -164,7 +168,7 @@ class TestExtractionFlow:
         # After extraction: progress hidden, cancel disabled, filter enabled
         assert not win.progress.isVisible(), "Progress bar should hide after extraction"
         assert not win.controls.btn_cancel.isEnabled(), "Cancel should disable after extraction"
-        assert win.controls.filter_controls.isEnabled(), "Filter should enable after extraction"
+        assert win.controls.filter_controls.btn_auto.isEnabled(), "Threshold should enable after scoring"
         assert win.controls.stack_controls.btn_stack.isEnabled(), "Stack should enable after extraction (if frames kept)"
         assert win.filmstrip.count() > 0, "Filmstrip should have frames after extraction"
 
@@ -198,7 +202,7 @@ class TestExtractionFlow:
         load_video(win)
         assert win._filter_state is None, "Filter state must clear when opening new video"
         assert win.filmstrip.count() == 0, "Filmstrip must clear when opening new video"
-        assert not win.controls.filter_controls.isEnabled(), "Filter must disable on new video"
+        assert not win.controls.filter_controls.btn_auto.isEnabled(), "Threshold must gate on new video"
 
 
 class TestFilterPanel:
@@ -208,7 +212,7 @@ class TestFilterPanel:
         scores = [50.0, 100.0, 150.0, 200.0, 250.0]
         win._filter_state = FilterState(scores=scores, threshold=100.0)
         fc = win.controls.filter_controls
-        fc.setEnabled(True)
+        fc.set_scored(True)
         fc.configure_range(min(scores), max(scores))
         fc.set_threshold(100.0)
         win.filmstrip.clear()
@@ -367,7 +371,7 @@ class TestFilmstripToggle:
         scores = [float(i * 50 + 50) for i in range(3)]
         win._filter_state = FilterState(scores=scores, threshold=0.0)
         win.filmstrip.load_frames(paths)
-        win.controls.filter_controls.setEnabled(True)
+        win.controls.filter_controls.set_scored(True)
         win.controls.filter_controls.configure_range(50.0, 150.0)
         win._refresh_filter_view()
         pump(50)

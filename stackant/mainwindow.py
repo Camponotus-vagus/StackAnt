@@ -249,7 +249,7 @@ class MainWindow(QMainWindow):
         self._stacked_output = None
         self._current_temp_dir = None
         self.preview_panel.clear()
-        self.controls.filter_controls.setEnabled(False)
+        self.controls.filter_controls.set_scored(False)
         self.controls.stack_controls.set_ready(False)
         self.controls.export_controls.setEnabled(False)
 
@@ -339,7 +339,7 @@ class MainWindow(QMainWindow):
         )
 
         fc = self.controls.filter_controls
-        fc.setEnabled(True)
+        fc.set_scored(True)
         fc.configure_range(min(scores, default=0.0), max(scores, default=1.0))
         fc.set_threshold(threshold)
         if self._filter_state.decimation_target:
