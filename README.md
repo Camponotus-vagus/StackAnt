@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/Camponotus-vagus/StackAnt/actions/workflows/ci.yml/badge.svg)](https://github.com/Camponotus-vagus/StackAnt/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20597239.svg)](https://doi.org/10.5281/zenodo.20597239)
 
 A focus-stacking GUI for macro entomology photography.
 
