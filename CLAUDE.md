@@ -13,18 +13,19 @@ Full roadmap is in `docs/PLAN.md`. Do not repeat it here.
 
 ## Current state
 
-- v0.1.0 shipped; v0.2.0 in progress on main.
-- Two stacking backends: `focus-stack` CLI (existing) and an
-  in-process Laplacian-pyramid implementation in
-  `stackant/pyramid_stacker.py` with a worker `QThread` and
-  guided-filter-smoothed sharpness weights.
-- Method radio in StackControls (Pyramid / focus-stack / Auto),
-  Compare button, Pyramid-specific Advanced sub-group, compare
-  view toggle in the preview panel. See
-  `docs/superpowers/specs/2026-04-23-pyramid-stacking-design.md`
-  for the full design and
-  `docs/superpowers/plans/2026-04-23-pyramid-stacking.md` for the
-  task-by-task plan.
+- v0.1.0 shipped. v0.2 (Laplacian-pyramid backend) and v0.3 (batch
+  processing) have both landed on `main`.
+- Two stacking backends: `focus-stack` CLI and an in-process
+  Laplacian-pyramid stacker (`stackant/pyramid_stacker.py`, worker
+  `QThread`, guided-filter-smoothed weights). Method radio in
+  StackControls (Pyramid / focus-stack / Auto), Compare button,
+  compare view toggle in the preview panel.
+- Batch (v0.3): `File ▸ Batch…` scans a folder, queues every video, and
+  runs extract → score → auto-filter → stack → export on each in sequence
+  (`stackant/batch_controller.py` + `widgets/batch_dialog.py`); output
+  alongside each source video, skip-existing, per-video failure isolation.
+- Design specs + task plans live in `docs/superpowers/` — Claude-Code-local
+  scratch, gitignored (not present in fresh clones).
 
 ## Layout
 
@@ -37,10 +38,19 @@ stackant/
   frame_extractor.py       ffmpeg QProcess wrapper
   frame_filter.py          Laplacian variance blur detection + decimation
   stacker.py               focus-stack QProcess wrapper
+  pyramid_stacker.py       in-process Laplacian-pyramid stacker (QThread)
+  stacking.py              choose_method() heuristic for Auto mode
+  batch.py                 batch pure helpers + BatchSettings/BatchItem
+  batch_controller.py      sequential batch state machine (QObject)
+  folder_loader.py         list_images() for image-folder input
+  settings.py              QSettings load/save wrappers
+  tempfiles.py             temp-dir tracking + cleanup
   preview.py               Stacked-image display + crop
   exporter.py              TIFF + JPEG save
   config.py                Defaults and constants
-tests/                     pytest — start with frame_filter
+  widgets/                 controls + stack/filter/export controls,
+                           filmstrip, log_panel, preview_panel, batch_dialog
+tests/                     pytest (headless Qt — files set QT_QPA_PLATFORM=offscreen)
 docs/PLAN.md               Roadmap (don't inline into CLAUDE.md)
 ```
 
@@ -72,24 +82,35 @@ not via popup dialogs (popups only for blocking conditions like missing deps).
 comment non-obvious *why* (a workaround, a tuned constant, a subtle
 invariant). Never narrate *what* the code does.
 
+## Gotchas
+
+- **macOS + focus-stack OpenCL.** focus-stack's GPU wavelet kernel crashes on
+  macOS' deprecated OpenCL (`can't create cl_mem handle …`). The app auto-retries
+  once on CPU with `--no-opencl`, and `config.FOCUS_STACK_NO_OPENCL_DEFAULT` is
+  True on Darwin so fresh macOS installs default to CPU. OpenCL-failure detection
+  scans the full captured log (the signature can scroll past the tail).
+
 ## Testing
 
 - `pytest tests/` — unit tests for pure logic (frame filter, decimation, command building)
 - Manual smoke test each session: launch app, run the new feature end-to-end
 - End-to-end pipeline test video: `/home/francesco/Scaricati/Formiche Uganda/Vid_26-04-22 150856.mp4` (plus other files in that folder)
 
-## Environment notes (this machine)
+## Environment notes
 
-- Linux Mint, Python 3.12.3, ffmpeg 6.1.1 (apt), git.
-- `focus-stack` 1.5 installed at `~/.local/bin/focus-stack` (built from
-  PetteriAimonen/focus-stack after `sudo apt install libopencv-dev`).
-  The binary lands at `build/focus-stack` — not the repo root — after
-  `make`.
-- Project-local venv at `.venv/` (gitignored). Activate before running.
-- System locale is Italian — subprocess error messages may be localised.
-- Dev escape hatch: `STACKANT_ALLOW_MISSING=focus-stack python main.py` lets
-  the app launch without focus-stack installed (use during Sessions 2–3
-  while focus-stack is not yet built). Do not document this to end users.
+Shared: project-local venv at `.venv/` (gitignored — activate before running);
+Italian system locale (subprocess errors may be localised); dev escape hatch
+`STACKANT_ALLOW_MISSING=focus-stack python main.py` launches without focus-stack
+(do not document to end users).
+
+**Linux (primary dev):** Linux Mint, Python 3.12.3, ffmpeg 6.1.1 (apt).
+`focus-stack` 1.5 built from PetteriAimonen/focus-stack after
+`sudo apt install libopencv-dev` (binary lands at `build/focus-stack` after `make`),
+copied to `~/.local/bin/focus-stack`.
+
+**macOS:** ffmpeg 8.1.1, `focus-stack` 1.5 at `~/.local/bin/focus-stack`. OpenCL is
+deprecated here (see Gotchas — CPU `--no-opencl` default). The Linux test-video path
+in Testing (above) does not exist on macOS, so video-dependent smoke tests skip.
 
 ## Running
 
@@ -103,7 +124,7 @@ python main.py
 - One commit per completed session (e.g. `Session 1: app skeleton + dependency checker`)
 - Smaller fixup commits within a session are fine
 - Never skip hooks; never force-push
-- GitHub publishing deferred to Session 8 — do not create a remote without confirmation
+- Published on GitHub (`origin/main`); push there directly, never force-push
 
 ## Known constraints / decisions
 
