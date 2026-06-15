@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import QRect, QSize, Qt, pyqtSignal
-from PyQt6.QtGui import QMouseEvent, QPixmap
+from PyQt6.QtGui import QKeyEvent, QMouseEvent, QPixmap
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -62,6 +62,7 @@ class PreviewPanel(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._stacked_path: str | None = None
         self._stacked_paths: dict[str, str | None] = {
             "pyramid": None, "focus-stack": None,
@@ -88,14 +89,18 @@ class PreviewPanel(QWidget):
         header_row.addWidget(self.lbl_mode)
         header_row.addStretch(1)
         self.btn_toggle = QPushButton("Show input frame")
+        self.btn_toggle.setToolTip("Toggle between the stacked result and the selected input frame (shortcut: V)")
+        self.btn_toggle.setAccessibleName("Toggle preview mode")
         self.btn_toggle.clicked.connect(self._toggle_mode)
         self.btn_toggle.setEnabled(False)
         header_row.addWidget(self.btn_toggle)
+
         self.btn_compare_view = QPushButton()
+        self.btn_compare_view.setAccessibleName("Cycle compare method")
         self.btn_compare_view.setVisible(False)
         self.btn_compare_view.clicked.connect(self._cycle_compare_view)
         self.btn_compare_view.setToolTip(
-            "Cycle between the two stacked outputs from Compare mode."
+            "Cycle between the two stacked outputs from Compare mode (shortcut: C)."
         )
         header_row.addWidget(self.btn_compare_view)
         root.addLayout(header_row)
@@ -124,6 +129,8 @@ class PreviewPanel(QWidget):
         detail_header.addWidget(lbl_detail)
         detail_header.addStretch(1)
         self.btn_reset_crop = QPushButton("Reset crop")
+        self.btn_reset_crop.setToolTip("Clear the current crop selection and return to full view")
+        self.btn_reset_crop.setAccessibleName("Reset crop")
         self.btn_reset_crop.clicked.connect(self._reset_crop)
         self.btn_reset_crop.setEnabled(False)
         detail_header.addWidget(self.btn_reset_crop)
@@ -144,6 +151,8 @@ class PreviewPanel(QWidget):
 
         bottom_row = QHBoxLayout()
         self.btn_restack = QPushButton("Re-stack with current params")
+        self.btn_restack.setToolTip("Run the stacker again with current settings")
+        self.btn_restack.setAccessibleName("Re-stack")
         self.btn_restack.clicked.connect(self.restack_requested.emit)
         self.btn_restack.setEnabled(False)
         bottom_row.addWidget(self.btn_restack)
@@ -268,6 +277,16 @@ class PreviewPanel(QWidget):
     def _reset_crop(self) -> None:
         self.preview_label.clear_rubber()
         self._clear_detail()
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if event.key() == Qt.Key.Key_V:
+            if self.btn_toggle.isEnabled():
+                self._toggle_mode()
+        elif event.key() == Qt.Key.Key_C:
+            if self.btn_compare_view.isVisible() and self.btn_compare_view.isEnabled():
+                self._cycle_compare_view()
+        else:
+            super().keyPressEvent(event)
 
     def set_compare_outputs(
         self,

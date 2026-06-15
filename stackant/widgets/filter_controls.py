@@ -55,6 +55,11 @@ class FilterControls(QGroupBox):
 
         auto_row = QHBoxLayout()
         self.btn_auto = QPushButton("Auto threshold (mean − 1σ)")
+        self.btn_auto.setToolTip(
+            "Automatically calculate a blur threshold based on frame scores.\n"
+            "Calculated as: mean score − 1 standard deviation."
+        )
+        self.btn_auto.setAccessibleName("Calculate auto threshold")
         self.btn_auto.clicked.connect(self.auto_threshold_requested.emit)
         auto_row.addWidget(self.btn_auto)
         layout.addLayout(auto_row)
