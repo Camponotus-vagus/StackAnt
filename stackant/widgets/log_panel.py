@@ -1,6 +1,7 @@
 """Collapsible subprocess-output log panel."""
 from __future__ import annotations
 
+from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QClipboard, QFontDatabase, QGuiApplication
 from PyQt6.QtWidgets import (
     QHBoxLayout,
@@ -15,6 +16,9 @@ class LogPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._build_ui()
+        self._copy_timer = QTimer(self)
+        self._copy_timer.setSingleShot(True)
+        self._copy_timer.timeout.connect(self._reset_copy_label)
         self._visible = False
         self._update_visibility()
 
@@ -24,18 +28,27 @@ class LogPanel(QWidget):
 
         btn_row = QHBoxLayout()
         self.btn_toggle = QPushButton("Show log ▾")
+        self.btn_toggle.setToolTip("Show or hide the detailed processing log")
+        self.btn_toggle.setAccessibleName("Toggle log visibility")
         self.btn_toggle.clicked.connect(self._toggle)
         btn_row.addWidget(self.btn_toggle)
+
         self.btn_copy = QPushButton("Copy log")
+        self.btn_copy.setToolTip("Copy the entire log to the clipboard")
+        self.btn_copy.setAccessibleName("Copy log to clipboard")
         self.btn_copy.clicked.connect(self._copy)
         btn_row.addWidget(self.btn_copy)
+
         self.btn_clear = QPushButton("Clear")
+        self.btn_clear.setToolTip("Clear all text from the log")
+        self.btn_clear.setAccessibleName("Clear log content")
         self.btn_clear.clicked.connect(self._clear)
         btn_row.addWidget(self.btn_clear)
         btn_row.addStretch(1)
         layout.addLayout(btn_row)
 
         self.view = QPlainTextEdit()
+        self.view.setAccessibleName("Processing log")
         self.view.setReadOnly(True)
         self.view.setMaximumBlockCount(5000)
         self.view.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
@@ -68,6 +81,11 @@ class LogPanel(QWidget):
         clip = QGuiApplication.clipboard()
         if clip is not None:
             clip.setText(self.view.toPlainText(), QClipboard.Mode.Clipboard)
+            self.btn_copy.setText("Copied!")
+            self._copy_timer.start(2000)
+
+    def _reset_copy_label(self) -> None:
+        self.btn_copy.setText("Copy log")
 
     def _clear(self) -> None:
         self.view.clear()

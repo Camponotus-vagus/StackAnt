@@ -1,3 +1,7 @@
-## 2025-05-14 - [Drag and Drop for File Ingestion]
-**Learning:** Adding drag-and-drop support significantly lowers the friction for users already browsing their file system. In desktop applications like StackAnt, the main window is the most intuitive drop target. Reusing existing logic by refactoring UI-bound "pick" methods to accept optional paths allows for clean integration with both manual dialogs and drop events.
-**Action:** Always check if a desktop app has a primary "input" flow and implement drag-and-drop on the main window. Ensure internal methods like `_pick_file` are robust enough to handle both `bool` (from signals) and `str` (from drop events).
+## 2025-05-14 - [Accessible Controls Pattern]
+**Learning:** PyQt6 widgets like QPushButton often lack explicit accessible names, especially when using icon-only or abbreviated labels. Combining `setToolTip` with `setAccessibleName` ensures both visual guidance and screen reader support.
+**Action:** Always provide both `setToolTip` and `setAccessibleName` for interactive controls to maintain high accessibility standards.
+
+## 2025-05-14 - [Interactive Feedback for Clipboard Actions]
+**Learning:** Users appreciate immediate confirmation for silent actions like "Copy to Clipboard". A temporary label change (e.g., "Copied!") using a `QTimer` is an effective, lightweight way to provide this feedback without intrusive popups.
+**Action:** Implement "Copied!" feedback for all clipboard-copying interactions using a 2-second timer.
