@@ -17,9 +17,10 @@ Design tenets:
 from __future__ import annotations
 
 import math
+import concurrent.futures
 import threading
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import Callable, Iterable, Sequence
 
 import cv2
 import numpy as np
@@ -113,71 +114,68 @@ def smooth_weights(
 
 
 def fuse_images(
-    images: list[np.ndarray],
+    images: Iterable[np.ndarray],
     levels: int,
     guided_radius: int = 8,
 ) -> np.ndarray:
     """Laplacian-pyramid fusion of N float32 RGB images in [0, 1].
 
     Pipeline:
-        - build L-level Laplacian pyramid per image
+        - for each image, build L-level Laplacian pyramid
         - at each level, compute per-image SML on its grayscale
-          component, smooth with guided filter, normalise across N
-          so weights sum to 1 at every pixel
-        - weighted-sum Laplacian coefficients per level
+          component, smooth with guided filter, and accumulate
+          weighted Laplacian coefficients
+        - normalise across N so weights sum to 1 at every pixel
         - collapse to full resolution
 
     Input images must be pre-aligned and have identical shape.
+    Iterating over images rather than pre-building all pyramids
+    reduces memory usage from O(N * size) to O(size).
     """
-    if not images:
+    iterator = iter(images)
+    try:
+        first_im = next(iterator)
+    except StopIteration:
         raise ValueError("fuse_images needs at least one image")
-    shape = images[0].shape
-    for im in images[1:]:
-        if im.shape != shape:
-            raise ValueError("fuse_images: all images must share shape")
 
-    pyramids = [build_laplacian_pyramid(im, levels) for im in images]
-    fused_levels: list[np.ndarray] = []
+    # Initialize fused levels and total weights based on the first image's pyramid.
+    pyramid = build_laplacian_pyramid(first_im, levels)
+    fused_levels = [np.zeros_like(band) for band in pyramid]
+    total_weights = [np.zeros(band.shape[:2], dtype=np.float32) for band in pyramid]
 
-    for lvl in range(levels):
-        level_bands = [p[lvl] for p in pyramids]
-
-        # Fused band and total weight for current level.
-        # Computing cumulatively saves significant memory compared to
-        # stacking all weight maps for all images at once.
-        fused = np.zeros_like(level_bands[0])
-        total_weight = np.zeros(level_bands[0].shape[:2], dtype=np.float32)
-
-        for band in level_bands:
+    def process_pyramid(p: list[np.ndarray]) -> None:
+        for lvl, band in enumerate(p):
             # Grayscale for sharpness scoring and as a guide for smoothing.
-            # Laplacian bands are high-frequency proxies for sharpness;
-            # the last level is the base Gaussian.
             if band.ndim == 3:
-                # We skip np.clip here for performance; float32 cvtColor
-                # is stable enough for Laplacian bands.
                 gray = cv2.cvtColor(band, cv2.COLOR_RGB2GRAY)
             else:
                 gray = band
 
             # Compute and smooth sharpness weights.
-            # Using grayscale guides is ~2x faster than RGB guides.
             w = compute_sml(gray)
             sw = smooth_weights(w, gray, radius=guided_radius)
             sw = np.maximum(sw, 0.0) + 1e-8
 
-            total_weight += sw
+            total_weights[lvl] += sw
             if band.ndim == 3:
-                fused += sw[..., np.newaxis] * band
+                fused_levels[lvl] += sw[..., np.newaxis] * band
             else:
-                fused += sw * band
+                fused_levels[lvl] += sw * band
 
-        # Normalise so weights sum to 1 per pixel.
-        if band.ndim == 3:
-            fused /= total_weight[..., np.newaxis]
+    process_pyramid(pyramid)
+
+    for im in iterator:
+        if im.shape != first_im.shape:
+            raise ValueError("fuse_images: all images must share shape")
+        pyramid = build_laplacian_pyramid(im, levels)
+        process_pyramid(pyramid)
+
+    # Normalise each level so weights sum to 1 per pixel.
+    for lvl in range(levels):
+        if fused_levels[lvl].ndim == 3:
+            fused_levels[lvl] /= total_weights[lvl][..., np.newaxis]
         else:
-            fused /= total_weight
-
-        fused_levels.append(fused)
+            fused_levels[lvl] /= total_weights[lvl]
 
     return collapse_laplacian_pyramid(fused_levels)
 
@@ -276,60 +274,76 @@ def run_pyramid_stack(
         if cancel_check():
             raise Cancelled()
 
-    _progress(0, "Loading frames")
-    images = [_load_rgb_float(p) for p in input_paths]
-    _check_cancel()
+    # Alignment: use the middle frame as the reference.
+    ref_idx = len(input_paths) // 2
+    ref_image = _load_rgb_float(input_paths[ref_idx])
+    ref_gray = cv2.cvtColor(ref_image, cv2.COLOR_RGB2GRAY)
+    h, w = ref_gray.shape
+    n = len(input_paths)
 
-    shape = images[0].shape
-    for p, im in zip(input_paths, images):
-        if im.shape != shape:
+    def process_frame(idx: int) -> tuple[int, np.ndarray | None]:
+        if cancel_check():
+            return idx, None
+        if idx == ref_idx:
+            return idx, ref_image
+
+        im = _load_rgb_float(input_paths[idx])
+        if im.shape != ref_image.shape:
             raise ValueError(
-                f"pyramid stacker requires same-shape inputs; {p} differs"
+                f"pyramid stacker requires same-shape inputs; {input_paths[idx]} differs"
             )
 
-    # Alignment: use the middle frame as the reference.
-    ref_idx = len(images) // 2
-    ref_gray = cv2.cvtColor(images[ref_idx], cv2.COLOR_RGB2GRAY)
-    aligned: list[np.ndarray] = []
-    dropped: list[int] = []
-    n = len(images)
-    h, w = ref_gray.shape
-    for i, im in enumerate(images):
-        _check_cancel()
-        if i == ref_idx:
-            aligned.append(im)
-        else:
-            gray = cv2.cvtColor(im, cv2.COLOR_RGB2GRAY)
-            _, warp, ok = align_to_reference(ref_gray, gray)
-            if ok:
-                warped_rgb = cv2.warpAffine(
-                    im, warp, (w, h),
-                    flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP,
-                )
-                aligned.append(warped_rgb)
-            elif drop_misaligned:
-                dropped.append(i)
-            else:
-                raise RuntimeError(
-                    f"ECC alignment failed for frame {i} and drop_misaligned is False"
-                )
-        _progress(int(5 + 20 * (i + 1) / n), "Aligning frames")
+        gray = cv2.cvtColor(im, cv2.COLOR_RGB2GRAY)
+        _, warp, ok = align_to_reference(ref_gray, gray)
+        if ok:
+            warped_rgb = cv2.warpAffine(
+                im, warp, (w, h),
+                flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP,
+            )
+            return idx, warped_rgb
+        return idx, None
 
-    if not aligned:
-        raise RuntimeError(
-            f"All {n} frames failed ECC alignment. Subject may be moving."
-        )
-    if dropped:
-        _progress(25, f"Dropped {len(dropped)} misaligned frame(s)")
+    def aligned_stream() -> Iterable[np.ndarray]:
+        dropped_count = 0
+        processed_count = 0
+        # Use ThreadPoolExecutor to parallelize loading and alignment.
+        # Alignment is OpenCV-heavy (releasing GIL), so threads are effective.
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            # Maintain input order by using executor.map or similar.
+            # Here we use executor.submit to handle potential cancellations better.
+            futures = [executor.submit(process_frame, i) for i in range(n)]
+            for future in futures:
+                _check_cancel()
+                _, aligned_im = future.result()
+                processed_count += 1
+                _progress(int(5 + 25 * processed_count / n), "Aligning frames")
+                if aligned_im is not None:
+                    yield aligned_im
+                else:
+                    dropped_count += 1
+                    if not drop_misaligned and not cancel_check():
+                        # idx is not easily available here without more bookkeeping,
+                        # but we can raise a generic error or refactor.
+                        raise RuntimeError(
+                            "ECC alignment failed for a frame and drop_misaligned is False"
+                        )
+
+        if dropped_count == n:
+            raise RuntimeError(
+                f"All {n} frames failed ECC alignment. Subject may be moving."
+            )
+        if dropped_count > 0:
+            _progress(30, f"Dropped {dropped_count} misaligned frame(s)")
 
     # Pyramid depth.
     depth = pyramid_depth if pyramid_depth and pyramid_depth > 0 else _auto_pyramid_depth(
-        shape[0], shape[1]
+        h, w
     )
 
-    _progress(30, "Building pyramids")
+    _progress(30, "Stacking frames")
     _check_cancel()
-    fused = fuse_images(aligned, levels=depth, guided_radius=guided_radius)
+    # fuse_images now consumes the stream lazily.
+    fused = fuse_images(aligned_stream(), levels=depth, guided_radius=guided_radius)
     _check_cancel()
 
     _progress(95, "Writing output")
