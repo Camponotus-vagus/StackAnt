@@ -62,7 +62,9 @@ class StackControls(QGroupBox):
 
         btn_row = QHBoxLayout()
         self.btn_stack = QPushButton("Stack Frames")
+        self.btn_stack.setAccessibleName("Stack Frames")
         self.btn_cancel = QPushButton("Cancel")
+        self.btn_cancel.setAccessibleName("Cancel stacking")
         self.btn_cancel.setEnabled(False)
         btn_row.addWidget(self.btn_stack)
         btn_row.addWidget(self.btn_cancel)
@@ -72,6 +74,7 @@ class StackControls(QGroupBox):
         self.btn_cancel.clicked.connect(self.cancel_requested.emit)
 
         self.btn_compare = QPushButton("Compare methods")
+        self.btn_compare.setAccessibleName("Compare stacking methods")
         self.btn_compare.setToolTip(
             "Runs both stackers on the current frames and shows them\n"
             "side-by-side in the preview. Takes roughly twice as long."
@@ -215,6 +218,7 @@ class StackControls(QGroupBox):
         self._ready = ready
         self.btn_stack.setEnabled(ready and not self._running)
         self.btn_compare.setEnabled(ready and not self._running)
+        self._update_tooltips()
 
     def set_running(self, running: bool) -> None:
         self._running = running
@@ -222,6 +226,25 @@ class StackControls(QGroupBox):
         # Stack is only clickable when we have frames AND nothing is running.
         self.btn_stack.setEnabled(self._ready and not running)
         self.btn_compare.setEnabled(self._ready and not running)
+        self._update_tooltips()
+
+    def _update_tooltips(self) -> None:
+        if not self._ready:
+            tip = "Extract and filter frames first to enable stacking."
+        elif self._running:
+            tip = "Stacking is currently in progress…"
+        else:
+            tip = None
+
+        if tip:
+            self.btn_stack.setToolTip(tip)
+            self.btn_compare.setToolTip(tip)
+        else:
+            self.btn_stack.setToolTip("Run the focus-stacking process on the selected frames.")
+            self.btn_compare.setToolTip(
+                "Runs both stackers on the current frames and shows them\n"
+                "side-by-side in the preview. Takes roughly twice as long."
+            )
 
     def pyramid_params(self) -> dict:
         depth = self.spn_pyramid_depth.value()
