@@ -4,7 +4,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from PIL import Image
-
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import QApplication
 
@@ -236,5 +235,5 @@ def _first_frame_size(path: str) -> tuple[int, int]:
     try:
         with Image.open(path) as im:
             return im.size
-    except Exception:
+    except Exception:  # noqa: BLE001
         return 1920, 1080

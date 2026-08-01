@@ -10,8 +10,8 @@ import os
 import platform
 import shutil
 import subprocess
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 REQUIRED_TOOLS: tuple[str, ...] = ("ffmpeg", "focus-stack")
 _ALLOW_MISSING_ENV = "STACKANT_ALLOW_MISSING"
@@ -35,6 +35,7 @@ def _probe_version(path: str) -> str | None:
             capture_output=True,
             text=True,
             timeout=5,
+            check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
         return None

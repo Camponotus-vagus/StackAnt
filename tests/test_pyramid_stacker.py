@@ -1,4 +1,5 @@
 import os
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import sys
@@ -125,7 +126,7 @@ def test_align_to_reference_recovers_small_translation():
     # Shift by (2, 3) pixels.
     M = np.float32([[1, 0, 2], [0, 1, 3]])
     shifted = cv2.warpAffine(ref, M, (128, 128))
-    aligned, warp, ok = align_to_reference(ref, shifted)
+    aligned, _warp, ok = align_to_reference(ref, shifted)
     assert ok
     # Central region should match the reference closely after alignment.
     err = np.abs(aligned[10:-10, 10:-10] - ref[10:-10, 10:-10]).mean()

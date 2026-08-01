@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
     QFileDialog,
@@ -15,7 +15,6 @@ from PyQt6.QtWidgets import (
     QSlider,
     QVBoxLayout,
 )
-from PyQt6.QtCore import Qt
 
 
 class ExportControls(QGroupBox):

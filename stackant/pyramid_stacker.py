@@ -16,11 +16,11 @@ Design tenets:
 """
 from __future__ import annotations
 
-import math
 import concurrent.futures
+import math
 import threading
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
-from typing import Callable, Iterable, Sequence
 
 import cv2
 import numpy as np
@@ -217,7 +217,7 @@ def align_to_reference(
 
 
 def _auto_pyramid_depth(height: int, width: int) -> int:
-    return max(3, int(math.floor(math.log2(min(height, width)))) - 3)
+    return max(3, math.floor(math.log2(min(height, width))) - 3)
 
 
 def _load_rgb_float(path: str) -> np.ndarray:
