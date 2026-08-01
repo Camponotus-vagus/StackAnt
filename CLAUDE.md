@@ -106,6 +106,12 @@ invariant). Never narrate *what* the code does.
 - `pytest tests/` — unit tests for pure logic (frame filter, decimation, command building)
 - Manual smoke test each session: launch app, run the new feature end-to-end
 - End-to-end pipeline test video: `/home/francesco/Scaricati/Formiche Uganda/Vid_26-04-22 150856.mp4` (plus other files in that folder)
+- `ruff check stackant/ tests/` — same command CI runs. Config in `ruff.toml`;
+  the rule set is ruff's default for the version pinned in
+  `requirements-dev.txt`. **Keep the pin exact.** A new ruff release can widen
+  the defaults and turn CI red on an unrelated PR (this happened with 0.16.1).
+  To bump: `pip install -U ruff && ruff check stackant/ tests/`, fix the new
+  findings, then update the pin in the same commit.
 
 ## Environment notes
 
