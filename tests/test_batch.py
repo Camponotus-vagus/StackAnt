@@ -221,7 +221,7 @@ def test_skip_already_done_items(qapp, tmp_path):
     (tmp_path / "a_stacked.tif").write_bytes(b"x")
     export = {"tiff": True, "jpeg": False, "quality": 95}
 
-    ctrl, ext, foc, pyr = _make_controller()
+    ctrl, ext, _foc, _pyr = _make_controller()
     finished = {}
     ctrl.batch_finished.connect(lambda s: finished.update(s))
     statuses = []
@@ -237,7 +237,7 @@ def test_run_starts_extraction_for_first_item(qapp, tmp_path):
     v = str(tmp_path / "a.mp4")
     (tmp_path / "a.mp4").write_bytes(b"x")
     export = {"tiff": True, "jpeg": False, "quality": 95}
-    ctrl, ext, foc, pyr = _make_controller()
+    ctrl, ext, _foc, _pyr = _make_controller()
     started = []
     ctrl.item_started.connect(started.append)
     ctrl.run([BatchItem(v)], _settings(export))
@@ -265,7 +265,7 @@ def test_happy_path_single_video(qapp, tmp_path, monkeypatch):
     v = str(tmp_path / "a.mp4")
     (tmp_path / "a.mp4").write_bytes(b"x")
     export = {"tiff": True, "jpeg": True, "quality": 90}
-    ctrl, ext, foc, pyr = _make_controller()
+    ctrl, ext, foc, _pyr = _make_controller()
     summary = {}
     ctrl.batch_finished.connect(lambda s: summary.update(s))
     item = BatchItem(v)
@@ -273,7 +273,7 @@ def test_happy_path_single_video(qapp, tmp_path, monkeypatch):
 
     ext.finish(["f0.tif", "f1.tif", "f2.tif"])
     assert foc.calls, "focus stacker should have been launched"
-    kept, out, kw = foc.calls[0]
+    kept, out, _kw = foc.calls[0]
     assert kept == ["f0.tif", "f1.tif", "f2.tif"]
 
     foc.finish(out)
@@ -294,7 +294,7 @@ def test_extract_failure_isolates_and_continues(qapp, tmp_path, monkeypatch):
     v2 = str(tmp_path / "b.mp4")
     (tmp_path / "b.mp4").write_bytes(b"x")
     export = {"tiff": True, "jpeg": False, "quality": 95}
-    ctrl, ext, foc, pyr = _make_controller()
+    ctrl, ext, _foc, _pyr = _make_controller()
     items = [BatchItem(v1), BatchItem(v2)]
     ctrl.run(items, _settings(export))
     ext.fail("ffmpeg produced no frames.")
@@ -312,7 +312,7 @@ def test_opencl_failure_retries_once_on_cpu(qapp, tmp_path, monkeypatch):
     monkeypatch.setattr(bc.tempfiles, "remove_temp_dir", lambda p: None)
     v = str(tmp_path / "a.mp4")
     (tmp_path / "a.mp4").write_bytes(b"x")
-    ctrl, ext, foc, pyr = _make_controller()
+    ctrl, ext, foc, _pyr = _make_controller()
     ctrl.run([BatchItem(v)], _settings({"tiff": True, "jpeg": False, "quality": 95}))
     ext.finish(["f0.tif"])
     assert len(foc.calls) == 1 and "--no-opencl" not in foc.calls[0][2]["extra_cli"]
@@ -335,7 +335,7 @@ def test_non_opencl_failure_does_not_retry(qapp, tmp_path, monkeypatch):
     monkeypatch.setattr(bc.tempfiles, "remove_temp_dir", lambda p: None)
     v = str(tmp_path / "a.mp4")
     (tmp_path / "a.mp4").write_bytes(b"x")
-    ctrl, ext, foc, pyr = _make_controller()
+    ctrl, ext, foc, _pyr = _make_controller()
     items = [BatchItem(v)]
     ctrl.run(items, _settings({"tiff": True, "jpeg": False, "quality": 95}))
     ext.finish(["f0.tif"])
@@ -355,7 +355,7 @@ def test_cancel_mid_stack_stops_without_advancing(qapp, tmp_path, monkeypatch):
     (tmp_path / "a.mp4").write_bytes(b"x")
     v2 = str(tmp_path / "b.mp4")
     (tmp_path / "b.mp4").write_bytes(b"x")
-    ctrl, ext, foc, pyr = _make_controller()
+    ctrl, ext, foc, _pyr = _make_controller()
     items = [BatchItem(v1), BatchItem(v2)]
     summary = {}
     ctrl.batch_finished.connect(lambda s: summary.update(s))
@@ -372,7 +372,7 @@ def test_cancel_during_scoring_does_not_launch_stack(qapp, tmp_path, monkeypatch
     from stackant import batch_controller as bc
     from stackant.batch import BatchItem
     from stackant.frame_filter import FrameScore
-    ctrl, ext, foc, pyr = _make_controller()
+    ctrl, ext, foc, _pyr = _make_controller()
 
     def fake_score(frames, progress_callback=None):
         ctrl.cancel()  # user clicks Cancel mid-scoring
@@ -420,8 +420,8 @@ def test_pyramid_failure_does_not_retry_on_focus(qapp, tmp_path, monkeypatch):
 
 
 def _dialog_with_controls(tmp_path):
-    from stackant.widgets.controls import ControlsPanel
     from stackant.widgets.batch_dialog import BatchDialog
+    from stackant.widgets.controls import ControlsPanel
     panel = ControlsPanel()
     panel.export_controls.chk_tiff.setChecked(True)
     panel.export_controls.chk_jpeg.setChecked(False)

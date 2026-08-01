@@ -57,6 +57,7 @@ def probe_frame_count(path: str) -> int | None:
             capture_output=True,
             text=True,
             timeout=30,
+            check=False,
         )
         n = int(result.stdout.strip())
         return n if n > 0 else None

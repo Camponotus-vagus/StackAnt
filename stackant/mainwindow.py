@@ -1,8 +1,8 @@
 """Main application window — wires controls, filter, filmstrip, preview, subprocesses."""
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction, QDragEnterEvent, QDropEvent, QIcon, QKeySequence
@@ -28,8 +28,8 @@ from .frame_filter import (
     score_frames,
     suggested_decimation_target,
 )
+from .pyramid_stacker import GUIDED_FILTER_AVAILABLE, PyramidStacker
 from .stacker import FocusStacker, is_opencl_failure, should_retry_without_opencl
-from .pyramid_stacker import PyramidStacker, GUIDED_FILTER_AVAILABLE
 from .stacking import choose_method
 from .widgets.controls import ControlsPanel
 from .widgets.filmstrip import Filmstrip
@@ -178,7 +178,7 @@ class MainWindow(QMainWindow):
         sc.chk_no_opencl.setChecked(sp["no_opencl"])
         sc.set_method(settings.load_method())
         pp = settings.load_pyramid_params()
-        sc.spn_pyramid_depth.setValue(pp["depth"] if pp["depth"] > 0 else 0)
+        sc.spn_pyramid_depth.setValue(max(0, pp["depth"]))
         sc.spn_guided_radius.setValue(pp["guided_radius"])
         sc.chk_drop_misaligned.setChecked(pp["drop_misaligned"])
 
@@ -432,7 +432,7 @@ class MainWindow(QMainWindow):
                 from PIL import Image as _PIL
                 with _PIL.open(first) as _im:
                     w, h = _im.size
-            except Exception:
+            except Exception:  # noqa: BLE001
                 w, h = 1920, 1080
             method = choose_method(len(kept), w, h)
             self.log_panel.append(

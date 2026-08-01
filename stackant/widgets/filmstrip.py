@@ -56,7 +56,7 @@ class Filmstrip(QListWidget):
         for i, p in enumerate(paths):
             try:
                 pm = make_thumbnail(p, _THUMB_PX)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pm = make_placeholder_pixmap(_THUMB_PX)
             self._base_pixmaps.append(pm)
             self._rejected_pixmaps.append(make_rejected_pixmap(pm))

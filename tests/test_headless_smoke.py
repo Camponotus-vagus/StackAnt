@@ -12,7 +12,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PyQt6.QtCore import Qt, QTimer, QEventLoop
+from PyQt6.QtCore import QEventLoop, Qt, QTimer
 from PyQt6.QtWidgets import QApplication
 
 # ---- helpers ---------------------------------------------------------------
@@ -361,6 +361,7 @@ class TestFilmstripToggle:
     def _load_synthetic(self, win):
         """Create tiny valid TIF files and load them into the filmstrip."""
         import tempfile
+
         import cv2
         import numpy as np
         tmpdir = Path(tempfile.mkdtemp())
@@ -382,7 +383,7 @@ class TestFilmstripToggle:
 
     def test_space_toggle(self, win):
         """Space key on filmstrip should toggle the current frame's inclusion."""
-        paths, _ = self._load_synthetic(win)
+        _paths, _ = self._load_synthetic(win)
         win.filmstrip.setCurrentRow(0)
         initial_mask = win._filter_state.kept_mask()
         assert initial_mask[0], "Frame 0 should be kept initially (threshold=0)"
@@ -399,7 +400,7 @@ class TestFilmstripToggle:
 
     def test_double_click_toggle(self, win):
         """Double-click on a filmstrip item should toggle frame inclusion."""
-        paths, _ = self._load_synthetic(win)
+        _paths, _ = self._load_synthetic(win)
         win.filmstrip.setCurrentRow(1)
         item = win.filmstrip.item(1)
         initial_mask = win._filter_state.kept_mask()
@@ -418,19 +419,20 @@ class TestFilmstripToggle:
 
     def test_filmstrip_clear_fires_current_item_changed(self, win):
         """filmstrip.clear() fires currentItemChanged with None → preview should clear."""
-        paths, _ = self._load_synthetic(win)
+        _paths, _ = self._load_synthetic(win)
         win.filmstrip.setCurrentRow(0)
         pump(20)
         # Clear filmstrip — should trigger _on_filmstrip_selection_changed(None, ...)
         win.filmstrip.clear()
         pump(50)
         # preview_panel should have received set_input_reference(None)
-        assert win.preview_panel._input_path is None or True  # just verify no crash
+        assert True  # just verify no crash
 
 
 class TestPreviewPanel:
     def test_show_stacked_sets_path(self, win):
         import tempfile
+
         import cv2
         import numpy as np
         tmpdir = Path(tempfile.mkdtemp())
@@ -452,6 +454,7 @@ class TestPreviewPanel:
     def test_crop_rect_cleared_on_reload(self, win):
         """Loading a new image clears the rubber band and detail view."""
         import tempfile
+
         import cv2
         import numpy as np
         tmpdir = Path(tempfile.mkdtemp())
@@ -511,6 +514,7 @@ class TestStateAfterStackFail:
     def test_stacked_output_not_set_after_fail(self, win):
         """After a stack failure the old _stacked_output should not be advertised as valid."""
         import tempfile
+
         import cv2
         import numpy as np
         tmpdir = Path(tempfile.mkdtemp())

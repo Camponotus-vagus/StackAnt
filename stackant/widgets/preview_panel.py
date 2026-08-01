@@ -223,7 +223,7 @@ class PreviewPanel(QWidget):
             return
         try:
             pm = load_pixmap(path)
-        except Exception as exc:  # image decode failure — show placeholder text
+        except Exception as exc:  # noqa: BLE001 — image decode failure — show placeholder text
             self.preview_label.setText(f"(preview error: {exc})")
             self._full_pixmap = None
             return

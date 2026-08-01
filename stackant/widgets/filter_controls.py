@@ -103,7 +103,7 @@ class FilterControls(QGroupBox):
         self._muted = True
         try:
             rng = self._max_score - self._min_score
-            pos = int(round((value - self._min_score) / rng * self._SLIDER_RESOLUTION))
+            pos = round((value - self._min_score) / rng * self._SLIDER_RESOLUTION)
             pos = max(0, min(self._SLIDER_RESOLUTION, pos))
             self.sld_threshold.setValue(pos)
             self.lbl_threshold_value.setText(f"{value:.1f}")

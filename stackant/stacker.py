@@ -7,7 +7,6 @@ from pathlib import Path
 
 from PyQt6.QtCore import QObject, QProcess, pyqtSignal
 
-
 # focus-stack prints progress in square-bracketed "[ N/M]" prefixes for every
 # per-frame task (e.g. "[ 40/214] Grayscale aligned_frame_00023.tif").
 _PROGRESS_RE = re.compile(rb"\[\s*(\d+)\s*/\s*(\d+)\s*\]")
