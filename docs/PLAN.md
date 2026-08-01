@@ -17,12 +17,22 @@ stackant/
 ├── main.py                  # Entry point (thin)
 ├── requirements.txt
 ├── requirements-dev.txt
+├── ruff.toml                # Lint config (rule set frozen by the ruff pin)
 ├── README.md
 ├── CHANGELOG.md
+├── CITATION.cff             # Citable metadata + ORCID + Zenodo DOI
+├── .zenodo.json             # Metadata carried on every Zenodo release
 ├── LICENSE
+├── .github/
+│   └── workflows/ci.yml     # Lint (ruff) + pytest on Python 3.10 and 3.12
+├── docs/
+│   └── PLAN.md
 ├── assets/
+│   ├── icon.svg             # Vector source
 │   ├── icon.png
-│   └── screenshot.png
+│   ├── screenshot.png
+│   ├── demo.gif
+│   └── social-preview.png
 ├── stackant/
 │   ├── __init__.py
 │   ├── app.py               # QApplication setup
@@ -55,7 +65,7 @@ Working window that launches, checks for ffmpeg and focus-stack, blocks graceful
 Load a video or image folder; extract frames to a temp directory via ffmpeg QProcess.
 
 ### Session 3 — Frame Filter (Auto Stability Detection)
-Laplacian variance blur detection; auto-threshold mean+1σ; decimation to target 50–100 frames; manual toggle.
+Laplacian variance blur detection; auto-threshold mean−1σ; decimation to target 50–100 frames; manual toggle.
 
 ### Session 4 — Focus Stacking
 Run focus-stack via QProcess on selected frames; default and advanced parameters; cancel; log stream.
@@ -88,10 +98,11 @@ README with screenshot, pinned requirements, CHANGELOG v0.1.0, tag v0.1.0.
 ```python
 FFMPEG_DEFAULT_FORMAT = "tiff"
 FRAME_TARGET_COUNT = 75          # Target frames after decimation
-LAPLACIAN_THRESHOLD_AUTO = True  # Compute from mean + 1 std dev
+LAPLACIAN_THRESHOLD_AUTO = True  # Compute from mean − 1 std dev
 FOCUS_STACK_CONSISTENCY = 2
 FOCUS_STACK_DENOISE = True
 FOCUS_STACK_SHARP_STRENGTH = 1
+FOCUS_STACK_NO_OPENCL_DEFAULT = platform.system() == "Darwin"  # macOS OpenCL is unreliable
 JPEG_DEFAULT_QUALITY = 95
 PREVIEW_MAX_PX = 800
 ```
@@ -106,6 +117,27 @@ PREVIEW_MAX_PX = 800
 - RAW image support                              → out, no plan
 - 3D / anaglyph output                           → out, no plan
 - Cloud sync or remote processing                → out, no plan
+
+## Current state
+
+v0.3.1 is the latest release. `main` carries unreleased work on top of it —
+performance, accessibility, and CI hardening, no new user-facing features:
+
+- **Performance.** `pyramid_stacker.py` streams frames through a generator and
+  aligns them with a `ThreadPoolExecutor`, cutting peak frame memory to O(1)
+  instead of holding the whole stack. `frame_filter.score_frames()` scores
+  frames in parallel the same way — OpenCV's decode and Laplacian release the
+  GIL, so scoring scales across cores while keeping input order and live
+  progress updates.
+- **Accessibility.** Tooltips and `setAccessibleName` on the filter, stack,
+  export, log, and preview controls; keyboard focus and V / C shortcuts on the
+  preview panel; "Copied!" feedback on the log copy button.
+- **CI hardening.** `ruff` is pinned exactly in `requirements-dev.txt` and the
+  rule set is declared in `ruff.toml`. Before the pin an unpinned `ruff>=0.6`
+  let release 0.16.1 widen ruff's defaults and turn lint red on `main` and on
+  an unrelated PR — 41 violations that no commit had introduced.
+
+Next milestone is v0.5 (Windows installer), pulled ahead of v0.4.
 
 ## Roadmap
 
@@ -130,6 +162,10 @@ CITATION.cff + ORCID, Zenodo DOI (concept 10.5281/zenodo.20597239) + badge,
 `.zenodo.json`, social-preview card, README demo GIF + Examples gallery,
 redesigned ant icon. Public launch in progress; phased playbook and the post
 drafts live in the gitignored `promo/` (`README-promo.md`).
+
+### Unreleased — performance, accessibility, CI hardening
+
+On `main`, not yet tagged. See **Current state** above for what landed.
 
 ### v0.4 — Polish
 
@@ -157,3 +193,6 @@ Windows without caveats.
 - Business logic lives in modules separate from UI code
 - Each session ends with a working, runnable app
 - Test each session with a short MP4 before declaring complete
+- CI must be green before merge: `ruff check stackant/ tests/` and `pytest -q`
+  on Python 3.10 and 3.12. Keep the ruff pin exact — bumping it is a deliberate
+  commit that also carries the fixes for whatever new rules the release adds.
