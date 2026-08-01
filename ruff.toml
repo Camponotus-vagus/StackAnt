@@ -1,0 +1,10 @@
+# The lint rule set is ruff's own default for the version pinned in
+# requirements-dev.txt (0.16.1) — the pin is what freezes it. Without an exact
+# pin a new ruff release can widen the defaults and turn CI red on an unrelated
+# PR, which is exactly what happened on 2026-08-01. Only deviations from that
+# default set belong here.
+target-version = "py310"
+line-length = 120
+
+[lint]
+extend-select = ["E501"]

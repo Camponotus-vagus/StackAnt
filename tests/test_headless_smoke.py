@@ -172,7 +172,8 @@ class TestExtractionFlow:
         assert not win.progress.isVisible(), "Progress bar should hide after extraction"
         assert not win.controls.btn_cancel.isEnabled(), "Cancel should disable after extraction"
         assert win.controls.filter_controls.btn_auto.isEnabled(), "Threshold should enable after scoring"
-        assert win.controls.stack_controls.btn_stack.isEnabled(), "Stack should enable after extraction (if frames kept)"
+        assert win.controls.stack_controls.btn_stack.isEnabled(), \
+            "Stack should enable after extraction (if frames kept)"
         assert win.filmstrip.count() > 0, "Filmstrip should have frames after extraction"
 
     @pytest.mark.skipif(not Path(VIDEO).exists(), reason="Test video not present")
@@ -422,11 +423,11 @@ class TestFilmstripToggle:
         _paths, _ = self._load_synthetic(win)
         win.filmstrip.setCurrentRow(0)
         pump(20)
+        assert win.preview_panel._input_path is not None
         # Clear filmstrip — should trigger _on_filmstrip_selection_changed(None, ...)
         win.filmstrip.clear()
         pump(50)
-        # preview_panel should have received set_input_reference(None)
-        assert True  # just verify no crash
+        assert win.preview_panel._input_path is None
 
 
 class TestPreviewPanel:
