@@ -10,3 +10,7 @@
 ## 2025-05-15 - [Streaming and Parallel Alignment]
 **Learning:** Loading all input frames into memory before processing is a significant memory bottleneck for large focus stacks. Using a generator-based stream and parallelizing the alignment step with `ThreadPoolExecutor` allows for O(1) frame memory overhead and faster execution.
 **Action:** Stream heavy image data through generators and use parallel executors for independent CPU-bound image processing tasks like alignment.
+
+## 2025-05-15 - [Parallel Frame Scoring]
+**Learning:** Sequential frame scoring (`score_frames`) using `cv2.imread` and `cv2.Laplacian` blocks CPU threads and scales poorly (O(N) sequentially). Since these OpenCV operations release the GIL, they are ideal for parallelization via a Python `ThreadPoolExecutor`.
+**Action:** Use multi-threaded `ThreadPoolExecutor` to parallelize heavy OpenCV-based image analysis operations such as frame blur scoring, and use `as_completed` combined with pre-allocated result lists to maintain real-time UI progress tracking and exact original 1:1 input ordering.
