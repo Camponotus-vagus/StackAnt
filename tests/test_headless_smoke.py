@@ -81,6 +81,18 @@ class TestInitialState:
     def test_extract_disabled_on_start(self, win):
         assert not win.controls.btn_extract.isEnabled(), "Extract should be disabled before input"
 
+    def test_controls_panel_accessibility_and_tooltips(self, win):
+        ctrl = win.controls
+        assert ctrl.btn_open_video.accessibleName() == "Open video file"
+        assert ctrl.btn_open_video.toolTip() == "Open a video file to extract frames for focus stacking"
+        assert ctrl.btn_open_folder.accessibleName() == "Open image folder"
+        assert ctrl.btn_open_folder.toolTip() == "Open a directory containing pre-extracted image frames"
+        assert ctrl.spn_decimation.accessibleName() == "Frame decimation step"
+        assert ctrl.btn_extract.accessibleName() == "Extract frames"
+        assert ctrl.btn_extract.toolTip() == "Open a video file first to enable frame extraction."
+        assert ctrl.btn_cancel.accessibleName() == "Cancel extraction"
+        assert ctrl.btn_cancel.toolTip() == "Cancel frame extraction process"
+
     def test_cancel_disabled_on_start(self, win):
         assert not win.controls.btn_cancel.isEnabled(), "Cancel should be disabled on start"
 
@@ -112,6 +124,10 @@ class TestVideoLoad:
         """After video selection: extract enabled, filter/stack/export still disabled."""
         load_video(win)
         assert win.controls.btn_extract.isEnabled(), "Extract should enable after video load"
+        assert (
+            win.controls.btn_extract.toolTip()
+            == "Extract frames from the loaded video using the specified decimation."
+        )
         assert not win.controls.filter_controls.btn_auto.isEnabled(), "Threshold still gated after video load"
         assert not win.controls.stack_controls.btn_stack.isEnabled(), "Stack still disabled after video load"
         assert not win.controls.export_controls.btn_export.isEnabled(), "Export still gated after video load"
@@ -535,6 +551,11 @@ class TestStateAfterStackFail:
 
 
 class TestFolderLoad:
+    def test_controls_tooltips_on_folder_load(self, win, tmp_path):
+        win.controls._set_input(str(tmp_path), is_folder=True)
+        assert not win.controls.btn_extract.isEnabled()
+        assert win.controls.btn_extract.toolTip() == "Frame extraction is not needed when an image folder is loaded."
+
     def test_open_folder_after_stack_clears_preview(self, win, tmp_path):
         """Opening a folder after a stack should clear the stacked preview."""
         import cv2
