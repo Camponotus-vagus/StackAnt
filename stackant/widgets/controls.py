@@ -43,7 +43,11 @@ class ControlsPanel(QFrame):
         ib = QVBoxLayout(input_box)
         row = QHBoxLayout()
         self.btn_open_video = QPushButton("Open Video…")
+        self.btn_open_video.setAccessibleName("Open video file")
+        self.btn_open_video.setToolTip("Open a video file to extract frames for focus stacking")
         self.btn_open_folder = QPushButton("Open Image Folder…")
+        self.btn_open_folder.setAccessibleName("Open image folder")
+        self.btn_open_folder.setToolTip("Open a directory containing pre-extracted image frames")
         row.addWidget(self.btn_open_video)
         row.addWidget(self.btn_open_folder)
         ib.addLayout(row)
@@ -60,6 +64,7 @@ class ControlsPanel(QFrame):
         self.spn_decimation = QSpinBox()
         self.spn_decimation.setRange(1, 100)
         self.spn_decimation.setValue(1)
+        self.spn_decimation.setAccessibleName("Frame decimation step")
         self.spn_decimation.setToolTip("1 = keep every frame; 3 = every third; etc.")
         dec_row.addWidget(self.spn_decimation)
         dec_row.addStretch(1)
@@ -67,8 +72,11 @@ class ControlsPanel(QFrame):
 
         btn_row = QHBoxLayout()
         self.btn_extract = QPushButton("Extract Frames")
+        self.btn_extract.setAccessibleName("Extract frames")
         self.btn_extract.setEnabled(False)
         self.btn_cancel = QPushButton("Cancel")
+        self.btn_cancel.setAccessibleName("Cancel extraction")
+        self.btn_cancel.setToolTip("Cancel frame extraction process")
         self.btn_cancel.setEnabled(False)
         btn_row.addWidget(self.btn_extract)
         btn_row.addWidget(self.btn_cancel)
@@ -90,6 +98,7 @@ class ControlsPanel(QFrame):
         self.btn_open_folder.clicked.connect(self._pick_folder)
         self.btn_extract.clicked.connect(self._emit_extract)
         self.btn_cancel.clicked.connect(self.cancel_requested.emit)
+        self._update_extract_tooltip()
 
     def _pick_video(self, path: str | None = None) -> None:
         if not isinstance(path, str):
@@ -119,6 +128,7 @@ class ControlsPanel(QFrame):
             "Frame extraction" if not is_folder else "Frame extraction (not needed for folders)"
         )
         self.spn_decimation.setEnabled(not is_folder)
+        self._update_extract_tooltip()
 
     def _emit_extract(self) -> None:
         self.extract_requested.emit(self.spn_decimation.value())
@@ -129,6 +139,18 @@ class ControlsPanel(QFrame):
         self.btn_open_video.setEnabled(not busy)
         self.btn_open_folder.setEnabled(not busy)
         self.spn_decimation.setEnabled(not busy and not self._input_is_folder)
+        self._update_extract_tooltip()
+
+    def _update_extract_tooltip(self) -> None:
+        if self._input_path is None:
+            tip = "Open a video file first to enable frame extraction."
+        elif self._input_is_folder:
+            tip = "Frame extraction is not needed when an image folder is loaded."
+        elif self.btn_cancel.isEnabled():
+            tip = "Frame extraction is currently in progress…"
+        else:
+            tip = "Extract frames from the loaded video using the specified decimation."
+        self.btn_extract.setToolTip(tip)
 
     def snapshot_for_batch(self):
         """Capture the current panel settings as a BatchSettings for the batch run.
