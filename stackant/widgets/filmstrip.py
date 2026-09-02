@@ -1,11 +1,17 @@
 """Horizontal filmstrip of frame thumbnails with kept/rejected visual state."""
 from __future__ import annotations
 
+import concurrent.futures
+
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
-from PyQt6.QtGui import QIcon, QKeyEvent
+from PyQt6.QtGui import QIcon, QImage, QKeyEvent, QPixmap
 from PyQt6.QtWidgets import QAbstractItemView, QListWidget, QListWidgetItem
 
-from ..thumbnails import make_placeholder_pixmap, make_rejected_pixmap, make_thumbnail
+from ..thumbnails import (
+    make_placeholder_pixmap,
+    make_rejected_pixmap,
+    make_thumbnail_data,
+)
 
 _THUMB_PX = 110
 _PATH_ROLE = Qt.ItemDataRole.UserRole
@@ -46,17 +52,46 @@ class Filmstrip(QListWidget):
         Frames whose thumbnail decode fails get a placeholder icon so the
         filmstrip position stays aligned with the source frame index — the
         rest of the pipeline (mask, decimation, stacker input) relies on
-        that 1:1 mapping. `progress_callback(done, total)` runs after each
-        thumbnail is added so the caller can drive a progress bar.
+        that 1:1 mapping. `progress_callback(done, total)` runs as each
+        thumbnail is decoded to drive the progress bar.
+
+        Optimized: Parallelizes image decoding and downscaling across worker
+        threads using ThreadPoolExecutor while preserving exact 1:1 input order.
         """
         self.clear()
         self._base_pixmaps = []
         self._rejected_pixmaps = []
         total = len(paths)
+        if total == 0:
+            return
+
+        # Parallelize CPU/IO image decoding across CPU cores
+        raw_results: list[tuple[bytes, int, int] | None] = [None] * total
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=min(16, total)
+        ) as executor:
+            futures = {
+                executor.submit(make_thumbnail_data, p, _THUMB_PX): i
+                for i, p in enumerate(paths)
+            }
+            for done_count, future in enumerate(
+                concurrent.futures.as_completed(futures), 1
+            ):
+                idx = futures[future]
+                try:
+                    raw_results[idx] = future.result()
+                except Exception:  # noqa: BLE001
+                    raw_results[idx] = None
+                if progress_callback is not None:
+                    progress_callback(done_count, total)
+
         for i, p in enumerate(paths):
-            try:
-                pm = make_thumbnail(p, _THUMB_PX)
-            except Exception:  # noqa: BLE001
+            res = raw_results[i]
+            if res is not None:
+                data, w, h = res
+                qimg = QImage(data, w, h, w * 3, QImage.Format.Format_RGB888)
+                pm = QPixmap.fromImage(qimg.copy())
+            else:
                 pm = make_placeholder_pixmap(_THUMB_PX)
             self._base_pixmaps.append(pm)
             self._rejected_pixmaps.append(make_rejected_pixmap(pm))
@@ -64,8 +99,7 @@ class Filmstrip(QListWidget):
             item.setData(_PATH_ROLE, p)
             item.setData(_INDEX_ROLE, i)
             self.addItem(item)
-            if progress_callback is not None:
-                progress_callback(i + 1, total)
+
         if self.count():
             self.setCurrentRow(0)
 
