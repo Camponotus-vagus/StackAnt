@@ -737,3 +737,44 @@ class TestSharpStrengthRetired:
 
     def test_params_still_carry_sharp_strength(self, win):
         assert "sharp_strength" in win.controls.stack_controls.params()
+
+
+class TestParallelThumbnailLoading:
+    def test_parallel_loading_preserves_order_and_handles_corrupt(self, app, tmp_path):
+        import cv2
+        import numpy as np
+
+        from stackant.widgets.filmstrip import _INDEX_ROLE, _PATH_ROLE, Filmstrip
+
+        paths = []
+        # Create 10 valid images of distinct solid colors
+        for i in range(10):
+            p = str(tmp_path / f"frame_{i:02d}.tif")
+            color = (i * 25, (10 - i) * 20, i * 15)
+            arr = np.full((120, 160, 3), fill_value=color, dtype=np.uint8)
+            cv2.imwrite(p, arr)
+            paths.append(p)
+
+        # Insert a corrupt file in the middle
+        corrupt_p = str(tmp_path / "corrupt.tif")
+        with open(corrupt_p, "wb") as f:
+            f.write(b"corrupt data")
+        paths.insert(5, corrupt_p)
+
+        filmstrip = Filmstrip()
+        progress_calls = []
+
+        def cb(done, total):
+            progress_calls.append((done, total))
+
+        filmstrip.load_frames(paths, progress_callback=cb)
+
+        assert filmstrip.count() == 11, "Filmstrip must contain all 11 frames"
+        assert len(progress_calls) == 11, "Progress callback should be called for every frame"
+        assert progress_calls[-1] == (11, 11)
+
+        # Verify 1:1 order alignment of stored paths and indices
+        for i, p in enumerate(paths):
+            item = filmstrip.item(i)
+            assert item.data(_PATH_ROLE) == p
+            assert item.data(_INDEX_ROLE) == i

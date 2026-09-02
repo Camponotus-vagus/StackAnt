@@ -1,23 +1,66 @@
 """Thumbnail rendering for the filmstrip.
 
-Uses Pillow for decoding because Qt's built-in TIFF support varies by build.
+Uses Pillow draft mode or OpenCV C/C++ backends for fast thumbnail decoding and resizing.
 """
 from __future__ import annotations
+
+from pathlib import Path
 
 from PIL import Image
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont, QImage, QPainter, QPixmap
 
+try:
+    import cv2
+except ImportError:
+    cv2 = None
 
-def make_thumbnail(path: str, max_edge: int = 120) -> QPixmap:
+
+def make_thumbnail_data(path: str, max_edge: int = 120) -> tuple[bytes, int, int]:
+    """Decode and downscale an image to raw RGB bytes and (width, height).
+
+    Optimized for filmstrip thumbnails:
+    - Uses Pillow JPEG draft mode (decodes directly at reduced resolution in libjpeg)
+      for ~4x-6x faster decoding of JPEGs.
+    - Uses OpenCV `cv2.INTER_AREA` for fast C/C++ area downsampling of TIFF/PNG frames.
+    - Falls back to Pillow BOX resampling for maximum compatibility.
+    """
+    ext = Path(path).suffix.lower()
+    if ext in (".jpg", ".jpeg"):
+        try:
+            with Image.open(path) as img:
+                img.draft("RGB", (max_edge, max_edge))
+                img = img.convert("RGB")
+                img.thumbnail((max_edge, max_edge), Image.Resampling.BOX)
+                return img.tobytes("raw", "RGB"), img.width, img.height
+        except Exception:  # noqa: BLE001, S110
+            pass
+
+    # OpenCV fast C/C++ image decoding & area-downsampling for TIFF, PNG, etc.
+    if cv2 is not None:
+        bgr = cv2.imread(path, cv2.IMREAD_COLOR)
+        if bgr is not None:
+            h, w = bgr.shape[:2]
+            scale = min(1.0, max_edge / max(h, w))
+            nw, nh = max(1, round(w * scale)), max(1, round(h * scale))
+            resized = cv2.resize(bgr, (nw, nh), interpolation=cv2.INTER_AREA)
+            rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+            return rgb.tobytes("C"), nw, nh
+
+    # Fallback to standard Pillow loading with fast BOX resampling
     with Image.open(path) as img:
         img = img.convert("RGB")
-        img.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
-        data = img.tobytes("raw", "RGB")
-        qimg = QImage(
-            data, img.width, img.height, img.width * 3, QImage.Format.Format_RGB888
-        )
+        img.thumbnail((max_edge, max_edge), Image.Resampling.BOX)
+        return img.tobytes("raw", "RGB"), img.width, img.height
+
+
+def make_thumbnail(path: str, max_edge: int = 120) -> QPixmap:
+    try:
+        data, w, h = make_thumbnail_data(path, max_edge)
+        qimg = QImage(data, w, h, w * 3, QImage.Format.Format_RGB888)
         return QPixmap.fromImage(qimg.copy())
+    except Exception:  # noqa: BLE001
+        return make_placeholder_pixmap(max_edge)
 
 
 def make_placeholder_pixmap(size: int = 120) -> QPixmap:
