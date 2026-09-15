@@ -512,6 +512,31 @@ def test_dialog_reject_when_idle_does_not_cancel(qapp, tmp_path, monkeypatch):
     assert cancelled == []
 
 
+def test_dialog_accessibility_and_tooltips(qapp, tmp_path):
+    (tmp_path / "a.mp4").write_bytes(b"x")
+    dlg, _ = _dialog_with_controls(tmp_path)
+
+    # Check initial accessible names and tooltips
+    assert dlg.txt_folder.accessibleName() == "Batch folder path"
+    assert dlg.btn_browse.accessibleName() == "Browse for batch video folder"
+    assert dlg.table.accessibleName() == "Batch video queue"
+    assert dlg.btn_remove.accessibleName() == "Remove selected video from queue"
+    assert dlg.progress.accessibleName() == "Batch overall progress"
+    assert dlg.btn_run.accessibleName() == "Start batch processing"
+    assert dlg.btn_cancel.accessibleName() == "Cancel batch processing"
+    assert dlg.btn_close.accessibleName() == "Close batch dialog"
+
+    # Verify dynamic tooltip behavior on Run button
+    assert dlg.btn_run.toolTip() == "Browse and select a folder containing videos to enable batch run"
+
+    dlg._populate(str(tmp_path))
+    assert dlg.btn_run.toolTip() == "Start processing the batch video queue"
+
+    dlg._running = True
+    dlg._set_run_enabled()
+    assert dlg.btn_run.toolTip() == "Batch processing is currently in progress…"
+
+
 def test_batch_action_disabled_while_busy(qapp):
     from stackant.mainwindow import MainWindow
     w = MainWindow(tool_statuses=None)

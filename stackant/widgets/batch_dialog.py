@@ -68,19 +68,27 @@ class BatchDialog(QDialog):
         folder_row.addWidget(QLabel("Folder:"))
         self.txt_folder = QLineEdit()
         self.txt_folder.setReadOnly(True)
+        self.txt_folder.setAccessibleName("Batch folder path")
+        self.txt_folder.setToolTip("Path to the selected folder containing videos for batch processing")
         self.btn_browse = QPushButton("Browse…")
+        self.btn_browse.setAccessibleName("Browse for batch video folder")
+        self.btn_browse.setToolTip("Select a folder containing videos to batch process")
         self.btn_browse.clicked.connect(self._browse)
         folder_row.addWidget(self.txt_folder, stretch=1)
         folder_row.addWidget(self.btn_browse)
         layout.addLayout(folder_row)
 
         self.table = QTableWidget(0, 3)
+        self.table.setAccessibleName("Batch video queue")
+        self.table.setToolTip("Queue of videos to process in batch mode")
         self.table.setHorizontalHeaderLabels(["Video", "Status", "Detail"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self.table, stretch=1)
 
         self.btn_remove = QPushButton("Remove selected from queue")
+        self.btn_remove.setAccessibleName("Remove selected video from queue")
+        self.btn_remove.setToolTip("Remove selected video entries from the batch queue")
         self.btn_remove.clicked.connect(self._remove_selected)
         layout.addWidget(self.btn_remove)
 
@@ -92,17 +100,24 @@ class BatchDialog(QDialog):
         self.lbl_overall = QLabel("Idle.")
         layout.addWidget(self.lbl_overall)
         self.progress = QProgressBar()
+        self.progress.setAccessibleName("Batch overall progress")
+        self.progress.setToolTip("Overall batch execution progress")
         self.progress.setRange(0, 100)
         layout.addWidget(self.progress)
 
         btn_row = QHBoxLayout()
         btn_row.addStretch(1)
         self.btn_run = QPushButton("Run")
+        self.btn_run.setAccessibleName("Start batch processing")
         self.btn_run.clicked.connect(self._run)
         self.btn_cancel = QPushButton("Cancel")
+        self.btn_cancel.setAccessibleName("Cancel batch processing")
+        self.btn_cancel.setToolTip("Cancel ongoing batch processing")
         self.btn_cancel.clicked.connect(self._controller.cancel)
         self.btn_cancel.setEnabled(False)
         self.btn_close = QPushButton("Close")
+        self.btn_close.setAccessibleName("Close batch dialog")
+        self.btn_close.setToolTip("Close the batch dialog")
         self.btn_close.clicked.connect(self.reject)
         btn_row.addWidget(self.btn_run)
         btn_row.addWidget(self.btn_cancel)
@@ -154,7 +169,14 @@ class BatchDialog(QDialog):
         self._set_run_enabled()
 
     def _set_run_enabled(self) -> None:
-        self.btn_run.setEnabled(not self._running and bool(self._items))
+        enabled = not self._running and bool(self._items)
+        self.btn_run.setEnabled(enabled)
+        if self._running:
+            self.btn_run.setToolTip("Batch processing is currently in progress…")
+        elif not self._items:
+            self.btn_run.setToolTip("Browse and select a folder containing videos to enable batch run")
+        else:
+            self.btn_run.setToolTip("Start processing the batch video queue")
 
     def _run(self) -> None:
         if not self._items:
