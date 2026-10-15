@@ -523,3 +523,32 @@ def test_batch_action_disabled_while_busy(qapp):
         assert w.act_batch.isEnabled()
     finally:
         w.close()
+
+
+def test_dialog_accessibility_and_tooltips(qapp, tmp_path):
+    dlg, _ = _dialog_with_controls(tmp_path)
+    assert dlg.txt_folder.accessibleName() == "Batch folder path"
+    assert "video files" in dlg.txt_folder.placeholderText()
+    assert dlg.btn_browse.accessibleName() == "Browse for batch video folder"
+    assert dlg.table.accessibleName() == "Batch video queue"
+    assert dlg.btn_remove.accessibleName() == "Remove selected videos from queue"
+    assert dlg.progress.accessibleName() == "Batch progress"
+    assert dlg.btn_run.accessibleName() == "Run batch processing"
+    assert dlg.btn_cancel.accessibleName() == "Cancel batch processing"
+    assert dlg.btn_close.accessibleName() == "Close batch dialog"
+
+    # Initially empty: run button is disabled with explanatory tooltip
+    assert not dlg.btn_run.isEnabled()
+    assert "Select a folder" in dlg.btn_run.toolTip()
+
+    # Populate folder with video
+    (tmp_path / "vid.mp4").write_bytes(b"x")
+    dlg._populate(str(tmp_path))
+    assert dlg.btn_run.isEnabled()
+    assert "Run batch processing" in dlg.btn_run.toolTip()
+
+    # When running, tooltip explains state
+    dlg._running = True
+    dlg._set_run_enabled()
+    assert not dlg.btn_run.isEnabled()
+    assert "in progress" in dlg.btn_run.toolTip()
