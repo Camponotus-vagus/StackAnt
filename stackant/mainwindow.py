@@ -725,6 +725,21 @@ class MainWindow(QMainWindow):
             status = "Compare: both methods failed (see log)."
         self.statusBar().showMessage(status, 10000)
 
+    def _confirm_overwrite(self, names: str) -> bool:
+        box = QMessageBox(self)
+        # Qt's native NSAlert crashes the app on macOS 27 (see app.missing_deps_dialog).
+        box.setOptions(QMessageBox.Option.DontUseNativeDialog)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle("Overwrite?")
+        box.setText(
+            f"The following file(s) already exist in the output folder:\n  {names}\n\n"
+            "Overwrite them?"
+        )
+        box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        box.setDefaultButton(QMessageBox.StandardButton.No)
+        box.exec()
+        return box.standardButton(box.clickedButton()) == QMessageBox.StandardButton.Yes
+
     def _on_stacked_view_changed(self, path: str) -> None:
         # Cycling the Compare view changes which result Export writes.
         self._stacked_output = path
@@ -754,15 +769,7 @@ class MainWindow(QMainWindow):
         existing = [t for t in targets if t.exists()]
         if existing:
             names = "\n  ".join(str(t.name) for t in existing)
-            reply = QMessageBox.question(
-                self,
-                "Overwrite?",
-                f"The following file(s) already exist in the output folder:\n  {names}\n\n"
-                "Overwrite them?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if reply != QMessageBox.StandardButton.Yes:
+            if not self._confirm_overwrite(names):
                 self.statusBar().showMessage("Export cancelled.")
                 return
 
