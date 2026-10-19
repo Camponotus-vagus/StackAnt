@@ -120,8 +120,11 @@ PREVIEW_MAX_PX = 800
 
 ## Current state
 
-v0.3.1 is the latest release. `main` carries unreleased work on top of it —
-performance, accessibility, and CI hardening, no new user-facing features:
+v0.3.2 is the latest release: bug fixes from an adversarial review
+(coarse-to-fine alignment, bounded pyramid memory, 16-bit pipeline, crash
+safety, batch robustness, macOS 27 launch crash) plus the `run.py` launcher;
+see CHANGELOG. It also shipped the work below, which had accumulated on `main`
+since v0.3.1 — performance, accessibility, and CI hardening:
 
 - **Performance.** `pyramid_stacker.py` streams frames through a generator and
   aligns them with a `ThreadPoolExecutor`, cutting peak frame memory to O(1)
@@ -163,9 +166,10 @@ CITATION.cff + ORCID, Zenodo DOI (concept 10.5281/zenodo.20597239) + badge,
 redesigned ant icon. Public launch in progress; phased playbook and the post
 drafts live in the gitignored `promo/` (`README-promo.md`).
 
-### Unreleased — performance, accessibility, CI hardening
+### v0.3.2 — Review fixes ✅ shipped (0.3.2)
 
-On `main`, not yet tagged. See **Current state** above for what landed.
+Fixes from the Oct 2026 adversarial review plus the performance,
+accessibility and CI hardening work listed under **Current state**.
 
 ### v0.4 — Polish
 

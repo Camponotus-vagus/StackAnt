@@ -13,8 +13,9 @@ Full roadmap is in `docs/PLAN.md`. Do not repeat it here.
 
 ## Current state
 
-- v0.3.1 is the current release (v0.3.0 plus citation/promo metadata): the
-  v0.2 Laplacian-pyramid backend and v0.3 batch processing on top of v0.1.0.
+- v0.3.2 is the current release: v0.3.1 (citation/promo metadata) plus the
+  fixes from the Oct 2026 adversarial review (pyramid memory/alignment/16-bit,
+  crash safety, batch robustness, macOS 27 launch crash, `run.py` launcher).
 - Distribution/findability shipped: live Zenodo DOI (concept
   `10.5281/zenodo.20597239`) + badge, `CITATION.cff` + ORCID, `.zenodo.json`,
   social-preview card, README demo GIF + Examples gallery, redesigned ant

@@ -2,7 +2,7 @@
 import platform
 
 APP_NAME = "StackAnt"
-APP_VERSION = "0.3.1"
+APP_VERSION = "0.3.2"
 ORG_NAME = "StackAnt"
 
 DECIMATION_LOW = 50
