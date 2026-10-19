@@ -168,6 +168,9 @@ class PreviewPanel(QWidget):
         self._update_toggle_button()
         self.btn_restack.setEnabled(True)
 
+    def set_running(self, running: bool) -> None:
+        self.btn_restack.setEnabled(not running and self._stacked_path is not None)
+
     def set_input_reference(self, path: str | None) -> None:
         """Set which input frame the compare toggle should use."""
         self._input_path = path

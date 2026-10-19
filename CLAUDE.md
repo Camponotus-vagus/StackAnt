@@ -41,6 +41,7 @@ Full roadmap is in `docs/PLAN.md`. Do not repeat it here.
 
 ```
 main.py                    Entry point (thin — calls stackant.app.main)
+run.py                     Launcher: (re)builds .venv, installs deps, runs main.py
 stackant/
   app.py                   QApplication bootstrap
   mainwindow.py            QMainWindow + panel layout + signal wiring
@@ -134,8 +135,8 @@ per-species stacks sit in the parent folder), so end-to-end runs work here too.
 ## Running
 
 ```bash
-source .venv/bin/activate
-python main.py
+python3 run.py      # self-repairing launcher: rebuilds a broken .venv,
+                    # reinstalls on requirements.txt change, then main.py
 ```
 
 ## Commit style

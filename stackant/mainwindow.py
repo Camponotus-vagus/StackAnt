@@ -142,9 +142,32 @@ class MainWindow(QMainWindow):
     def _set_busy(self, busy: bool) -> None:
         """Toggle controls + File menu together so there's one source of truth."""
         self.controls.set_busy(busy)
-        self.act_open_video.setEnabled(not busy)
-        self.act_open_folder.setEnabled(not busy)
-        self.act_batch.setEnabled(not busy)
+        self._set_menu_inputs_enabled(not busy)
+
+    def _lock_inputs(self, locked: bool) -> None:
+        self.controls.set_input_locked(locked)
+        self._set_menu_inputs_enabled(not locked)
+
+    def _set_menu_inputs_enabled(self, enabled: bool) -> None:
+        self.act_open_video.setEnabled(enabled)
+        self.act_open_folder.setEnabled(enabled)
+        self.act_batch.setEnabled(enabled)
+
+    def _set_stacking_ui(self, running: bool) -> None:
+        self.progress.setVisible(running)
+        if running:
+            self.progress.setValue(0)
+        self.controls.stack_controls.set_running(running)
+        self.preview_panel.set_running(running)
+        self._lock_inputs(running)
+
+    def _job_running(self) -> bool:
+        return (
+            self._compare_mode
+            or self._extractor.is_running
+            or self._stacker.is_running
+            or self._pyramid_stacker.is_running
+        )
 
     def _open_batch_dialog(self) -> None:
         from .widgets.batch_dialog import BatchDialog
@@ -276,11 +299,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("No images found in folder.", 5000)
             return
         self.statusBar().showMessage(f"Loading {len(frames)} thumbnails…")
-        self.progress.setVisible(True)
-        self._drive_progress(0, 1)
-        self.filmstrip.load_frames(frames, progress_callback=self._drive_progress)
-        self._run_scoring(frames)
-        self.progress.setVisible(False)
+        self._load_and_score(frames)
 
     def _on_extract_requested(self, decimation: int) -> None:
         video_path = self.controls.input_path
@@ -302,11 +321,20 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(
             f"Extracted {len(frames)} frames. Loading thumbnails…"
         )
-        self.progress.setVisible(True)
-        self._drive_progress(0, 1)
-        self.filmstrip.load_frames(frames, progress_callback=self._drive_progress)
-        self._run_scoring(frames)
-        self.progress.setVisible(False)
+        self._load_and_score(frames)
+
+    def _load_and_score(self, frames: list[str]) -> None:
+        # Thumbnail loading and scoring pump the event loop, so a click or a
+        # drop could otherwise start a second load on top of this one.
+        self._lock_inputs(True)
+        try:
+            self.progress.setVisible(True)
+            self._drive_progress(0, 1)
+            self.filmstrip.load_frames(frames, progress_callback=self._drive_progress)
+            self._run_scoring(frames)
+        finally:
+            self.progress.setVisible(False)
+            self._lock_inputs(False)
 
     def _on_extraction_failed(self, msg: str) -> None:
         self.progress.setVisible(False)
@@ -417,6 +445,8 @@ class MainWindow(QMainWindow):
         return [p for p, m in zip(paths, mask) if m]
 
     def _on_stack_requested(self) -> None:
+        if self._job_running():
+            return
         kept = self._kept_frame_paths()
         if not kept:
             self.statusBar().showMessage("No frames selected for stacking.")
@@ -441,23 +471,16 @@ class MainWindow(QMainWindow):
         else:
             method = method_choice
 
-        self.progress.setVisible(True)
-        self.progress.setValue(0)
-        self.controls.stack_controls.set_running(True)
-        self.act_open_video.setEnabled(False)
-        self.act_open_folder.setEnabled(False)
-        self.act_batch.setEnabled(False)
+        self._set_stacking_ui(True)
 
         if method == "pyramid":
             output = str(self._current_temp_dir / "stacked_pyramid.tif")
-            self._stacked_output = output
             self.statusBar().showMessage(f"Stacking {len(kept)} frames (Pyramid)…")
             self._pyramid_stacker.stack(
                 kept, output, **self.controls.stack_controls.pyramid_params()
             )
         else:
             output = str(self._current_temp_dir / "stacked_focus_stack.tif")
-            self._stacked_output = output
             self.statusBar().showMessage(f"Stacking {len(kept)} frames (focus-stack)…")
             params = self.controls.stack_controls.params()
             self._fs_retry_ctx = (kept, output, params)
@@ -466,11 +489,7 @@ class MainWindow(QMainWindow):
 
     def _finish_stacking_ui(self) -> None:
         """Shared UI-reset after a stack completes, fails, or is cancelled."""
-        self.progress.setVisible(False)
-        self.controls.stack_controls.set_running(False)
-        self.act_open_video.setEnabled(True)
-        self.act_open_folder.setEnabled(True)
-        self.act_batch.setEnabled(True)
+        self._set_stacking_ui(False)
 
     def _on_pyramid_log(self, line: str) -> None:
         if self._compare_mode:
@@ -520,6 +539,8 @@ class MainWindow(QMainWindow):
             self._compare_outputs = {"pyramid": None, "focus-stack": None}
 
     def _on_compare_requested(self) -> None:
+        if self._job_running():
+            return
         kept = self._kept_frame_paths()
         if not kept:
             self.statusBar().showMessage("No frames selected for Compare.")
@@ -530,12 +551,7 @@ class MainWindow(QMainWindow):
         self._compare_mode = True
         self._compare_outputs = {"pyramid": None, "focus-stack": None}
 
-        self.progress.setVisible(True)
-        self.progress.setValue(0)
-        self.controls.stack_controls.set_running(True)
-        self.act_open_video.setEnabled(False)
-        self.act_open_folder.setEnabled(False)
-        self.act_batch.setEnabled(False)
+        self._set_stacking_ui(True)
 
         self.statusBar().showMessage(
             f"Compare: running Pyramid on {len(kept)} frames…"
@@ -568,8 +584,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(
             f"Compare: running focus-stack on {len(kept)} frames…"
         )
-        self.progress.setValue(0)
-        self.controls.stack_controls.set_running(True)
+        self._set_stacking_ui(True)
         self._stacker.stack(kept, out, **self.controls.stack_controls.params())
 
     def _on_stack_done(self, output_path: str) -> None:

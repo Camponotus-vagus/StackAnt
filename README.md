@@ -129,11 +129,16 @@ falls back to CPU-only processing (slower but reliable).
 ```bash
 git clone <this-repo-url> stackant
 cd stackant
-python3 -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-python main.py
+python3 run.py                   # Windows: py run.py
 ```
+
+`run.py` creates the `.venv` virtualenv on first launch, installs the
+dependencies, and starts the app. Use it for every launch: it recreates
+`.venv` when it no longer works and reinstalls when `requirements.txt`
+changes. A virtualenv stores the absolute path of the Python that made it,
+so one copied or synced from another computer, or left behind by a Python
+upgrade (e.g. `brew upgrade`), stops working.
+Don't copy or sync `.venv` between machines; `run.py` rebuilds it.
 
 ## Usage
 

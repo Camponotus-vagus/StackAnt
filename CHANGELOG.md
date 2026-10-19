@@ -15,6 +15,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on every release.
 - README "Examples" gallery: Ugandan ant specimens stacked from single
   focus-pull videos (generic labels).
+- `run.py` launcher that recreates a broken `.venv` (one copied from another
+  machine, or orphaned by a Python upgrade) and reinstalls dependencies when
+  `requirements.txt` changes.
+
+### Fixed
+
+- Pyramid stacker memory: alignment now keeps a small window of frames in
+  flight instead of holding every aligned frame until the end of the run.
+- Pyramid stacker dark borders: the border a warp exposes is no longer
+  zero-filled and fused; it is replicated and given zero weight.
+- Loading a new video or folder (buttons, menu, or drag-and-drop) is blocked
+  while frames are extracted, scored, or stacked, so a finished stack can no
+  longer be shown and exported under the next video's name. Re-stack and
+  Compare can no longer start a second stack on top of a running one.
+- ffmpeg / focus-stack failing to launch no longer leaves the app stuck on
+  "already in progress"; a crashed process is reported as a failure instead
+  of a success, and focus-stack no longer passes off a stale output file.
+- Batch: a Cancel that lands just as a stack finishes no longer hangs the
+  dialog; videos sharing a name (`clip.mp4` + `clip.mov`) get separate
+  outputs; macOS `._*` sidecar files are no longer queued.
 
 ## [0.3.1] — 2026-06-08
 

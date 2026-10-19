@@ -227,3 +227,78 @@ def test_pyramid_stacker_cancellation_returns_cancelled_signal(tmp_path):
     QTimer.singleShot(0, stacker.cancel)
     loop.exec()
     assert result.get("cancelled") is True
+
+
+def test_shifted_frames_leave_no_dark_border(tmp_path):
+    rng = np.random.default_rng(0)
+    big = cv2.GaussianBlur(rng.random((260, 300, 3)).astype(np.float32), (0, 0), 2)
+    big = big * 0.5 + 0.4
+    paths = []
+    for i, (dx, dy) in enumerate([(0, 0), (8, 5), (-6, 7), (4, -6), (-9, -4)]):
+        crop = big[30 + dy:230 + dy, 30 + dx:270 + dx]
+        p = str(tmp_path / f"f{i}.png")
+        cv2.imwrite(p, (crop * 255).astype(np.uint8))
+        paths.append(p)
+    out = str(tmp_path / "out.png")
+    run_pyramid_stack(
+        paths, out, pyramid_depth=None, guided_radius=8, drop_misaligned=True,
+        progress_callback=None, cancel_check=lambda: False,
+    )
+    fused = cv2.imread(out).astype(np.float32) / 255.0
+    ref = cv2.imread(paths[len(paths) // 2]).astype(np.float32) / 255.0
+    for edge in (fused[:, :12], fused[:, -12:], fused[:12], fused[-12:]):
+        assert edge.min() > 0.3, "zero-filled warp border leaked into the stack"
+    assert abs(fused[:, :12].mean() - ref[:, :12].mean()) < 0.02
+
+
+def test_fuse_images_ignores_masked_out_pixels():
+    good = _synth_image((64, 64), seed=1)
+    junk = np.zeros_like(good)
+    junk[:, :, :] = 1.0
+    mask = np.zeros((64, 64), dtype=np.uint8)
+    fused = fuse_images([good, (junk, mask)], levels=3)
+    assert np.abs(fused - good).max() < 1e-4
+
+
+def test_alignment_keeps_only_a_small_window_of_frames_in_memory(tmp_path, monkeypatch):
+    import threading
+    import time
+
+    from stackant import pyramid_stacker as ps
+
+    n = 30
+    paths = []
+    for i in range(n):
+        p = str(tmp_path / f"f{i:02d}.png")
+        cv2.imwrite(p, (_synth_image((48, 48), seed=0) * 255).astype(np.uint8))
+        paths.append(p)
+
+    lock = threading.Lock()
+    loaded = 0
+    consumed = 0
+    peak_in_flight = 0
+    real_load = ps._load_rgb_float
+
+    def counting_load(path):
+        nonlocal loaded, peak_in_flight
+        im = real_load(path)
+        with lock:
+            loaded += 1
+            peak_in_flight = max(peak_in_flight, loaded - consumed)
+        return im
+
+    def slow_consumer(pct, stage):
+        nonlocal consumed
+        if stage == "Aligning frames":
+            with lock:
+                consumed += 1
+            time.sleep(0.01)
+
+    monkeypatch.setattr(ps, "_load_rgb_float", counting_load)
+    run_pyramid_stack(
+        paths, str(tmp_path / "out.png"), pyramid_depth=3, guided_radius=4,
+        drop_misaligned=True, progress_callback=slow_consumer,
+        cancel_check=lambda: False,
+    )
+    assert loaded == n
+    assert peak_in_flight <= 8, f"{peak_in_flight} frames held at once"

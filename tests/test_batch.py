@@ -552,3 +552,87 @@ def test_dialog_accessibility_and_tooltips(qapp, tmp_path):
     dlg._set_run_enabled()
     assert not dlg.btn_run.isEnabled()
     assert "in progress" in dlg.btn_run.toolTip()
+
+
+def test_discover_videos_skips_dot_files(tmp_path):
+    (tmp_path / "Vid.mp4").write_bytes(b"x")
+    (tmp_path / "._Vid.mp4").write_bytes(b"x")
+    (tmp_path / ".hidden.mov").write_bytes(b"x")
+    assert discover_videos(str(tmp_path)) == [str(tmp_path / "Vid.mp4")]
+
+
+def test_output_targets_disambiguate_videos_sharing_a_stem(tmp_path):
+    exp = {"tiff": True, "jpeg": True}
+    (tmp_path / "clip.mp4").write_bytes(b"x")
+    (tmp_path / "clip.mov").write_bytes(b"x")
+    (tmp_path / "._clip.avi").write_bytes(b"x")
+    (tmp_path / "solo.mp4").write_bytes(b"x")
+    mp4 = output_targets(str(tmp_path / "clip.mp4"), exp)
+    mov = output_targets(str(tmp_path / "clip.mov"), exp)
+    assert [t.name for t in mp4] == ["clip_mp4_stacked.tif", "clip_mp4_stacked.jpg"]
+    assert [t.name for t in mov] == ["clip_mov_stacked.tif", "clip_mov_stacked.jpg"]
+    solo = output_targets(str(tmp_path / "solo.mp4"), exp)
+    assert [t.name for t in solo] == ["solo_stacked.tif", "solo_stacked.jpg"]
+
+
+def test_cancel_landing_after_stack_finished_still_ends_batch(qapp, tmp_path, monkeypatch):
+    # The pyramid worker can finish while Cancel is clicked: its cancel() only
+    # sets a flag and the queued finished_ok arrives with no `cancelled` after it.
+    from stackant import batch_controller as bc
+    from stackant.frame_filter import FrameScore
+    monkeypatch.setattr(bc, "score_frames",
+                        lambda frames, progress_callback=None:
+                        [FrameScore(i, p, 100.0 + i) for i, p in enumerate(frames)])
+    monkeypatch.setattr(bc.tempfiles, "remove_temp_dir", lambda p: None)
+    for name in ("a.mp4", "b.mp4"):
+        (tmp_path / name).write_bytes(b"x")
+    ctrl, ext, foc, _pyr = _make_controller()
+    foc.cancel = lambda: None
+    items = [BatchItem(str(tmp_path / "a.mp4")), BatchItem(str(tmp_path / "b.mp4"))]
+    summaries = []
+    ctrl.batch_finished.connect(summaries.append)
+    ctrl.run(items, _settings({"tiff": True, "jpeg": False, "quality": 95}))
+    ext.finish(["f0.tif"])
+    ctrl.cancel()
+    foc.finish(str(tmp_path / "stacked.tif"))
+    assert len(summaries) == 1
+    assert items[0].status == "cancelled"
+    assert items[1].status == "pending"
+    assert not (tmp_path / "a_stacked.tif").exists()
+
+
+def test_cancel_landing_after_stack_failed_still_ends_batch(qapp, tmp_path, monkeypatch):
+    from stackant import batch_controller as bc
+    from stackant.frame_filter import FrameScore
+    monkeypatch.setattr(bc, "score_frames",
+                        lambda frames, progress_callback=None:
+                        [FrameScore(i, p, 100.0 + i) for i, p in enumerate(frames)])
+    monkeypatch.setattr(bc.tempfiles, "remove_temp_dir", lambda p: None)
+    (tmp_path / "a.mp4").write_bytes(b"x")
+    ctrl, ext, foc, _pyr = _make_controller()
+    foc.cancel = lambda: None
+    items = [BatchItem(str(tmp_path / "a.mp4"))]
+    summaries = []
+    ctrl.batch_finished.connect(summaries.append)
+    ctrl.run(items, _settings({"tiff": True, "jpeg": False, "quality": 95}))
+    ext.finish(["f0.tif"])
+    ctrl.cancel()
+    foc.fail("boom")
+    assert len(summaries) == 1
+    assert items[0].status == "cancelled"
+
+
+def test_many_skipped_items_do_not_recurse(qapp, tmp_path):
+    exp = {"tiff": True, "jpeg": False, "quality": 95}
+    items = []
+    for i in range(1100):
+        v = tmp_path / f"v{i:04d}.mp4"
+        v.write_bytes(b"x")
+        (tmp_path / f"v{i:04d}_stacked.tif").write_bytes(b"x")
+        items.append(BatchItem(str(v)))
+    ctrl, ext, _foc, _pyr = _make_controller()
+    summaries = []
+    ctrl.batch_finished.connect(summaries.append)
+    ctrl.run(items, _settings(exp))
+    assert summaries[0]["skipped"] == 1100
+    assert ext.calls == []

@@ -141,7 +141,7 @@ class FrameExtractor(QObject):
             pct = min(100, int(latest * 100 / max(1, self._expected_frames)))
             self.progress.emit(pct)
 
-    def _on_finished(self, exit_code: int, _exit_status) -> None:
+    def _on_finished(self, exit_code: int, exit_status) -> None:
         proc = self._proc
         self._proc = None
         if proc is None:
@@ -149,6 +149,10 @@ class FrameExtractor(QObject):
         if self._cancelled:
             self._cancelled = False
             self.cancelled.emit()
+            return
+        if exit_status != QProcess.ExitStatus.NormalExit:
+            tail = bytes(self._stderr_tail).decode(errors="replace")[-800:]
+            self.failed.emit(f"ffmpeg crashed:\n{tail}")
             return
         if exit_code != 0:
             tail = bytes(self._stderr_tail).decode(errors="replace")
@@ -162,11 +166,14 @@ class FrameExtractor(QObject):
         self.progress.emit(100)
         self.finished_ok.emit([str(p) for p in frames])
 
-    def _on_proc_error(self, _err) -> None:
-        if self._proc is None:
+    def _on_proc_error(self, err) -> None:
+        # Only FailedToStart is terminal without a following `finished`; a
+        # crash also emits `finished`, which reports it.
+        if self._proc is None or err != QProcess.ProcessError.FailedToStart:
             return
-        if self._cancelled:
-            # _on_finished will handle the cancelled emission shortly.
-            return
-        err_str = self._proc.errorString()
-        self.failed.emit(f"ffmpeg could not run: {err_str}")
+        proc = self._proc
+        self._proc = None
+        self._cancelled = False
+        msg = proc.errorString()
+        proc.deleteLater()
+        self.failed.emit(f"ffmpeg could not run: {msg}")

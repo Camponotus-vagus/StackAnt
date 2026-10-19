@@ -73,18 +73,18 @@ class BatchController(QObject):
 
     # ---- state machine ----
     def _advance(self) -> None:
-        self._idx += 1
-        self._item_retried = False
-        if self._cancelled or self._idx >= len(self._items):
-            self._finish()
-            return
-        item = self._items[self._idx]
-        if is_already_done(item.video_path, self._settings.export):
+        while True:
+            self._idx += 1
+            self._item_retried = False
+            if self._cancelled or self._idx >= len(self._items):
+                self._finish()
+                return
+            item = self._items[self._idx]
+            if not is_already_done(item.video_path, self._settings.export):
+                break
             item.status = "skipped"
             item.message = "outputs already exist"
             self.item_finished.emit(self._idx, "skipped", item.message)
-            self._advance()
-            return
         self._start_extract(item)
 
     def _start_extract(self, item: BatchItem) -> None:
@@ -176,7 +176,10 @@ class BatchController(QObject):
         self.item_progress.emit(self._idx, 55 + int(pct * 0.35))
 
     def _on_stack_done(self, out_path: str) -> None:
+        # A Cancel that lands after the worker already finished gets no
+        # `cancelled` signal, so the run must be finalized here.
         if self._cancelled:
+            self._on_worker_cancelled()
             return
         self._export(out_path)
 
@@ -207,6 +210,7 @@ class BatchController(QObject):
 
     def _on_stack_failed(self, msg: str) -> None:
         if self._cancelled:
+            self._on_worker_cancelled()
             return
         params = self._settings.focus_params
         if self._stack_method != "pyramid" and should_retry_without_opencl(

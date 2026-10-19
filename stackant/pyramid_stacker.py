@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import concurrent.futures
 import math
+import os
 import threading
+from collections import deque
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 
@@ -117,11 +119,16 @@ def smooth_weights(
 
 
 def fuse_images(
-    images: Iterable[np.ndarray],
+    images: Iterable[np.ndarray | tuple[np.ndarray, np.ndarray | None]],
     levels: int,
     guided_radius: int = 8,
 ) -> np.ndarray:
     """Laplacian-pyramid fusion of N float32 RGB images in [0, 1].
+
+    Each item is an image, or an (image, valid_mask) pair where the uint8
+    mask is 0 on pixels the image does not cover (the border an alignment
+    warp exposes). Masked-out pixels get zero weight, so they cannot pull
+    the result towards whatever fills them.
 
     Pipeline:
         - for each image, build L-level Laplacian pyramid
@@ -137,7 +144,7 @@ def fuse_images(
     """
     iterator = iter(images)
     try:
-        first_im = next(iterator)
+        first_im, first_mask = _split_masked(next(iterator))
     except StopIteration:
         raise ValueError("fuse_images needs at least one image")
 
@@ -146,7 +153,8 @@ def fuse_images(
     fused_levels = [np.zeros_like(band) for band in pyramid]
     total_weights = [np.zeros(band.shape[:2], dtype=np.float32) for band in pyramid]
 
-    def process_pyramid(p: list[np.ndarray]) -> None:
+    def process_pyramid(p: list[np.ndarray], mask: np.ndarray | None) -> None:
+        mask_levels = _mask_pyramid(mask, levels) if mask is not None else None
         for lvl, band in enumerate(p):
             # Grayscale for sharpness scoring and as a guide for smoothing.
             if band.ndim == 3:
@@ -159,6 +167,8 @@ def fuse_images(
             sw = smooth_weights(w, gray, radius=guided_radius)
             np.maximum(sw, 0.0, out=sw)
             sw += 1e-8
+            if mask_levels is not None:
+                sw *= mask_levels[lvl]
 
             total_weights[lvl] += sw
             if band.ndim == 3:
@@ -166,22 +176,42 @@ def fuse_images(
             else:
                 fused_levels[lvl] += sw * band
 
-    process_pyramid(pyramid)
+    process_pyramid(pyramid, first_mask)
 
-    for im in iterator:
+    for item in iterator:
+        im, mask = _split_masked(item)
         if im.shape != first_im.shape:
             raise ValueError("fuse_images: all images must share shape")
         pyramid = build_laplacian_pyramid(im, levels)
-        process_pyramid(pyramid)
+        process_pyramid(pyramid, mask)
 
-    # Normalise each level so weights sum to 1 per pixel.
+    # Normalise each level so weights sum to 1 per pixel. The floor only
+    # matters where every image was masked out.
     for lvl in range(levels):
+        np.maximum(total_weights[lvl], 1e-12, out=total_weights[lvl])
         if fused_levels[lvl].ndim == 3:
             fused_levels[lvl] /= total_weights[lvl][..., np.newaxis]
         else:
             fused_levels[lvl] /= total_weights[lvl]
 
     return collapse_laplacian_pyramid(fused_levels)
+
+
+def _split_masked(
+    item: np.ndarray | tuple[np.ndarray, np.ndarray | None],
+) -> tuple[np.ndarray, np.ndarray | None]:
+    if isinstance(item, tuple):
+        return item
+    return item, None
+
+
+def _mask_pyramid(mask: np.ndarray, levels: int) -> list[np.ndarray]:
+    current = mask.astype(np.float32) * (1.0 / 255.0)
+    out = [current]
+    for _ in range(levels - 1):
+        current = cv2.pyrDown(current)
+        out.append(current)
+    return out
 
 
 _ECC_CRITERIA = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 100, 1e-4)
@@ -318,11 +348,14 @@ def run_pyramid_stack(
     h, w = ref_gray.shape
     n = len(input_paths)
 
-    def process_frame(idx: int) -> tuple[int, np.ndarray | None]:
-        if cancel_check():
+    abort = threading.Event()
+    full_mask = np.full((h, w), 255, dtype=np.uint8)
+
+    def process_frame(idx: int) -> tuple[int, tuple[np.ndarray, np.ndarray | None] | None]:
+        if abort.is_set() or cancel_check():
             return idx, None
         if idx == ref_idx:
-            return idx, ref_image
+            return idx, (ref_image, None)
 
         im = _load_rgb_float(input_paths[idx])
         if im.shape != ref_image.shape:
@@ -333,30 +366,52 @@ def run_pyramid_stack(
         gray = cv2.cvtColor(im, cv2.COLOR_RGB2GRAY)
         _, warp, ok = align_to_reference(ref_gray, gray)
         if ok:
+            # Replicate rather than zero-fill the exposed border: black fill
+            # creates a hard edge whose high sharpness wins the fusion and
+            # leaves dark wedges along the frame edges.
             warped_rgb = cv2.warpAffine(
                 im, warp, (w, h),
                 flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP,
+                borderMode=cv2.BORDER_REPLICATE,
             )
-            return idx, warped_rgb
+            valid = cv2.warpAffine(
+                full_mask, warp, (w, h),
+                flags=cv2.INTER_NEAREST + cv2.WARP_INVERSE_MAP,
+                borderMode=cv2.BORDER_CONSTANT, borderValue=0,
+            )
+            return idx, (warped_rgb, valid)
         return idx, None
 
-    def aligned_stream() -> Iterable[np.ndarray]:
+    def aligned_stream() -> Iterable[tuple[np.ndarray, np.ndarray | None]]:
         dropped_count = 0
         processed_count = 0
-        # Use ThreadPoolExecutor to parallelize loading and alignment.
-        # Alignment is OpenCV-heavy (releasing GIL), so threads are effective.
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            # Maintain input order by using executor.map or similar.
-            # Here we use executor.submit to handle potential cancellations better.
-            futures = [executor.submit(process_frame, i) for i in range(n)]
-            for future in futures:
-                _check_cancel()
-                _, aligned_im = future.result()
-                processed_count += 1
-                _progress(int(5 + 25 * processed_count / n), "Aligning frames")
-                if aligned_im is not None:
-                    yield aligned_im
-                else:
+        # Alignment is OpenCV-heavy (releases the GIL), so threads help. Only
+        # a small window of frames is in flight: each aligned 4K frame is
+        # ~100 MB of float32, and submitting them all at once kept every one
+        # of them in memory until the end of the run.
+        workers = min(4, os.cpu_count() or 1)
+        window = workers + 2
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+            pending: deque[concurrent.futures.Future] = deque()
+            next_idx = 0
+
+            def top_up() -> None:
+                nonlocal next_idx
+                while next_idx < n and len(pending) < window:
+                    pending.append(executor.submit(process_frame, next_idx))
+                    next_idx += 1
+
+            try:
+                top_up()
+                while pending:
+                    _check_cancel()
+                    _, aligned = pending.popleft().result()
+                    top_up()
+                    processed_count += 1
+                    _progress(int(5 + 25 * processed_count / n), "Aligning frames")
+                    if aligned is not None:
+                        yield aligned
+                        continue
                     dropped_count += 1
                     if not drop_misaligned and not cancel_check():
                         # idx is not easily available here without more bookkeeping,
@@ -364,6 +419,10 @@ def run_pyramid_stack(
                         raise RuntimeError(
                             "ECC alignment failed for a frame and drop_misaligned is False"
                         )
+            finally:
+                # Fusion raised or the generator was closed: let queued frames
+                # return at once instead of being loaded and aligned for nothing.
+                abort.set()
 
         if dropped_count == n:
             raise RuntimeError(

@@ -32,6 +32,7 @@ class ControlsPanel(QFrame):
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self._input_path: str | None = None
         self._input_is_folder: bool = False
+        self._input_locked: bool = False
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -101,6 +102,8 @@ class ControlsPanel(QFrame):
         self._update_extract_tooltip()
 
     def _pick_video(self, path: str | None = None) -> None:
+        if self._input_locked:
+            return
         if not isinstance(path, str):
             path, _ = QFileDialog.getOpenFileName(
                 self, "Open video", "", "Videos (*.mp4 *.mov *.avi *.mkv);;All files (*)"
@@ -110,6 +113,8 @@ class ControlsPanel(QFrame):
             self.video_selected.emit(path)
 
     def _pick_folder(self, path: str | None = None) -> None:
+        if self._input_locked:
+            return
         if not isinstance(path, str):
             path = QFileDialog.getExistingDirectory(self, "Open image folder")
         if path:
@@ -134,11 +139,18 @@ class ControlsPanel(QFrame):
         self.extract_requested.emit(self.spn_decimation.value())
 
     def set_busy(self, busy: bool) -> None:
-        self.btn_extract.setEnabled(not busy and self._input_path is not None and not self._input_is_folder)
         self.btn_cancel.setEnabled(busy)
-        self.btn_open_video.setEnabled(not busy)
-        self.btn_open_folder.setEnabled(not busy)
-        self.spn_decimation.setEnabled(not busy and not self._input_is_folder)
+        self.set_input_locked(busy)
+
+    def set_input_locked(self, locked: bool) -> None:
+        """Block every way of loading or extracting a new input (buttons and drops)."""
+        self._input_locked = locked
+        self.btn_extract.setEnabled(
+            not locked and self._input_path is not None and not self._input_is_folder
+        )
+        self.btn_open_video.setEnabled(not locked)
+        self.btn_open_folder.setEnabled(not locked)
+        self.spn_decimation.setEnabled(not locked and not self._input_is_folder)
         self._update_extract_tooltip()
 
     def _update_extract_tooltip(self) -> None:
