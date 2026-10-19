@@ -109,6 +109,8 @@ class FocusStacker(QObject):
             self.failed.emit("No frames to stack.")
             return
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        # A leftover result from an earlier run must not pass for this one's.
+        Path(output_path).unlink(missing_ok=True)
         self._cancelled = False
 
         args = build_focus_stack_args(
@@ -152,7 +154,7 @@ class FocusStacker(QObject):
             if total > 0:
                 self.progress.emit(min(100, int(cur * 100 / total)))
 
-    def _on_finished(self, exit_code: int, _exit_status) -> None:
+    def _on_finished(self, exit_code: int, exit_status) -> None:
         proc = self._proc
         self._proc = None
         if proc is None:
@@ -160,6 +162,10 @@ class FocusStacker(QObject):
         if self._cancelled:
             self._cancelled = False
             self.cancelled.emit()
+            return
+        if exit_status != QProcess.ExitStatus.NormalExit:
+            tail = bytes(self._log_tail).decode(errors="replace")[-800:]
+            self.failed.emit(f"focus-stack crashed:\n{tail}")
             return
         if exit_code != 0:
             full = bytes(self._log_tail).decode(errors="replace")
@@ -177,10 +183,14 @@ class FocusStacker(QObject):
         else:
             self.failed.emit("focus-stack reported success but no output file was found.")
 
-    def _on_proc_error(self, _err) -> None:
-        if self._proc is None:
+    def _on_proc_error(self, err) -> None:
+        # Only FailedToStart is terminal without a following `finished`; a
+        # crash also emits `finished`, which reports it.
+        if self._proc is None or err != QProcess.ProcessError.FailedToStart:
             return
-        if self._cancelled:
-            return
-        msg = self._proc.errorString()
+        proc = self._proc
+        self._proc = None
+        self._cancelled = False
+        msg = proc.errorString()
+        proc.deleteLater()
         self.failed.emit(f"focus-stack could not run: {msg}")

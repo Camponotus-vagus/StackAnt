@@ -7,23 +7,47 @@ from pathlib import Path
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv"}
 
 
+def _is_video(p: Path) -> bool:
+    # Dot-files include macOS AppleDouble "._clip.mp4" sidecars on exFAT/SD
+    # cards: they carry the video extension but are not videos.
+    return (
+        not p.name.startswith(".")
+        and p.suffix.lower() in VIDEO_EXTENSIONS
+        and p.is_file()
+    )
+
+
 def discover_videos(folder: str) -> list[str]:
     """Sorted absolute paths of video files directly in `folder` (non-recursive)."""
     root = Path(folder)
     if not root.is_dir():
         return []
-    found = [
-        str(p)
-        for p in root.iterdir()
-        if p.is_file() and p.suffix.lower() in VIDEO_EXTENSIONS
-    ]
-    return sorted(found)
+    return sorted(str(p) for p in root.iterdir() if _is_video(p))
+
+
+def _shares_stem_with_sibling(src: Path) -> bool:
+    try:
+        siblings = list(src.parent.iterdir())
+    except OSError:
+        return False
+    stem = src.stem.lower()
+    return any(
+        p.stem.lower() == stem and p.name != src.name and _is_video(p)
+        for p in siblings
+    )
 
 
 def output_targets(video_path: str, export: dict) -> list[Path]:
-    """Destination files next to the source video for the selected formats."""
+    """Destination files next to the source video for the selected formats.
+
+    Videos that share a stem (`clip.mp4` + `clip.mov`) get the extension in
+    the name so neither overwrites nor "already-done"-skips the other.
+    """
     src = Path(video_path)
-    stem = f"{src.stem}_stacked"
+    if _shares_stem_with_sibling(src):
+        stem = f"{src.stem}_{src.suffix.lstrip('.')}_stacked"
+    else:
+        stem = f"{src.stem}_stacked"
     targets: list[Path] = []
     if export.get("tiff"):
         targets.append(src.parent / f"{stem}.tif")
