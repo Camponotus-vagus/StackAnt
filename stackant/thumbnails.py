@@ -6,14 +6,45 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PIL import Image
+import numpy as np
+from PIL import Image, ImageOps
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont, QImage, QPainter, QPixmap
+
+from .imread import imread
 
 try:
     import cv2
 except ImportError:
     cv2 = None
+
+
+def _to_uint8(arr: np.ndarray) -> np.ndarray:
+    """Scale 16-bit/integer/float pixel data to 8-bit without wrapping or clipping highlights."""
+    if arr.dtype == np.uint8:
+        return arr
+    if arr.dtype == np.uint16:
+        return (arr // 257).astype(np.uint8)
+    a = arr.astype(np.float64)
+    a = np.nan_to_num(a, nan=0.0, posinf=0.0, neginf=0.0)
+    peak = float(a.max()) if a.size else 0.0
+    if peak <= 1.0:
+        a = a * 255.0
+    elif peak <= 255.0:
+        pass
+    elif peak <= 65535.0:
+        a = a / 257.0
+    else:
+        a = a * (255.0 / peak)
+    return np.clip(a, 0, 255).astype(np.uint8)
+
+
+def _pillow_to_rgb(img: Image.Image) -> Image.Image:
+    img = ImageOps.exif_transpose(img)
+    if img.mode in ("I;16", "I;16L", "I;16B", "I", "F"):
+        gray = _to_uint8(np.asarray(img))
+        return Image.fromarray(gray, "L").convert("RGB")
+    return img.convert("RGB")
 
 
 def make_thumbnail_data(path: str, max_edge: int = 120) -> tuple[bytes, int, int]:
@@ -30,7 +61,7 @@ def make_thumbnail_data(path: str, max_edge: int = 120) -> tuple[bytes, int, int
         try:
             with Image.open(path) as img:
                 img.draft("RGB", (max_edge, max_edge))
-                img = img.convert("RGB")
+                img = _pillow_to_rgb(img)
                 img.thumbnail((max_edge, max_edge), Image.Resampling.BOX)
                 return img.tobytes("raw", "RGB"), img.width, img.height
         except Exception:  # noqa: BLE001, S110
@@ -38,8 +69,9 @@ def make_thumbnail_data(path: str, max_edge: int = 120) -> tuple[bytes, int, int
 
     # OpenCV fast C/C++ image decoding & area-downsampling for TIFF, PNG, etc.
     if cv2 is not None:
-        bgr = cv2.imread(path, cv2.IMREAD_COLOR)
+        bgr = imread(path, cv2.IMREAD_ANYDEPTH | cv2.IMREAD_COLOR)
         if bgr is not None:
+            bgr = _to_uint8(bgr)
             h, w = bgr.shape[:2]
             scale = min(1.0, max_edge / max(h, w))
             nw, nh = max(1, int(w * scale)), max(1, int(h * scale))
@@ -49,7 +81,7 @@ def make_thumbnail_data(path: str, max_edge: int = 120) -> tuple[bytes, int, int
 
     # Fallback to standard Pillow loading with fast BOX resampling
     with Image.open(path) as img:
-        img = img.convert("RGB")
+        img = _pillow_to_rgb(img)
         img.thumbnail((max_edge, max_edge), Image.Resampling.BOX)
         return img.tobytes("raw", "RGB"), img.width, img.height
 

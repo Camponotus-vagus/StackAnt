@@ -636,3 +636,113 @@ def test_many_skipped_items_do_not_recurse(qapp, tmp_path):
     ctrl.run(items, _settings(exp))
     assert summaries[0]["skipped"] == 1100
     assert ext.calls == []
+
+
+def _stub_scores(monkeypatch, scores_by_path=None, readable=None):
+    from stackant import batch_controller as bc
+    from stackant.frame_filter import FrameScore
+
+    def fake(frames, progress_callback=None):
+        return [
+            FrameScore(i, p, 100.0 + i, readable=(readable(p) if readable else True))
+            for i, p in enumerate(frames)
+        ]
+    monkeypatch.setattr(bc, "score_frames", fake)
+    monkeypatch.setattr(bc.tempfiles, "remove_temp_dir", lambda p: None)
+
+
+def test_unreadable_frames_are_not_stacked(qapp, tmp_path, monkeypatch):
+    _stub_scores(monkeypatch, readable=lambda p: p != "bad.tif")
+    (tmp_path / "a.mp4").write_bytes(b"x")
+    ctrl, ext, foc, _pyr = _make_controller()
+    ctrl.run([BatchItem(str(tmp_path / "a.mp4"))],
+             _settings({"tiff": True, "jpeg": False, "quality": 95}))
+    ext.finish(["f0.tif", "bad.tif", "f2.tif"])
+    assert "bad.tif" not in foc.calls[0][0]
+
+
+def test_scoring_exception_fails_only_that_video(qapp, tmp_path, monkeypatch):
+    from stackant import batch_controller as bc
+
+    def explode(frames, progress_callback=None):
+        raise MemoryError("too big")
+    monkeypatch.setattr(bc, "score_frames", explode)
+    monkeypatch.setattr(bc.tempfiles, "remove_temp_dir", lambda p: None)
+    for n in ("a.mp4", "b.mp4"):
+        (tmp_path / n).write_bytes(b"x")
+    ctrl, ext, _foc, _pyr = _make_controller()
+    items = [BatchItem(str(tmp_path / "a.mp4")), BatchItem(str(tmp_path / "b.mp4"))]
+    ctrl.run(items, _settings({"tiff": True, "jpeg": False, "quality": 95}))
+    ext.finish(["f0.tif"])
+    assert items[0].status == "failed"
+    assert "MemoryError" in items[0].message
+    assert len(ext.calls) == 2, "must move on to the next video"
+
+
+def test_export_exception_of_any_type_fails_only_that_video(qapp, tmp_path, monkeypatch):
+    from stackant import batch_controller as bc
+    _stub_scores(monkeypatch)
+
+    def bad_export(src, dst):
+        raise ValueError("decoder exploded")
+    monkeypatch.setattr(bc, "export_tiff", bad_export)
+    (tmp_path / "a.mp4").write_bytes(b"x")
+    ctrl, ext, foc, _pyr = _make_controller()
+    items = [BatchItem(str(tmp_path / "a.mp4"))]
+    summaries = []
+    ctrl.batch_finished.connect(summaries.append)
+    ctrl.run(items, _settings({"tiff": True, "jpeg": False, "quality": 95}))
+    ext.finish(["f0.tif"])
+    foc.finish(str(tmp_path / "stacked.tif"))
+    assert items[0].status == "failed"
+    assert summaries[0]["failed"] == 1
+
+
+def test_summary_counts_videos_never_started(qapp, tmp_path, monkeypatch):
+    _stub_scores(monkeypatch)
+    for n in ("a.mp4", "b.mp4", "c.mp4"):
+        (tmp_path / n).write_bytes(b"x")
+    ctrl, _ext, _foc, _pyr = _make_controller()
+    items = [BatchItem(str(tmp_path / n)) for n in ("a.mp4", "b.mp4", "c.mp4")]
+    summaries = []
+    ctrl.batch_finished.connect(summaries.append)
+    ctrl.run(items, _settings({"tiff": True, "jpeg": False, "quality": 95}))
+    ctrl.cancel()
+    assert summaries[0]["cancelled"] == 1
+    assert summaries[0]["pending"] == 2
+
+
+def test_dialog_run_disabled_without_export_format(qapp, tmp_path):
+    (tmp_path / "a.mp4").write_bytes(b"x")
+    dlg, controls = _dialog_with_controls(tmp_path)
+    controls.export_controls.chk_tiff.setChecked(False)
+    controls.export_controls.chk_jpeg.setChecked(False)
+    dlg._populate(str(tmp_path))
+    assert dlg._items
+    assert not dlg.btn_run.isEnabled()
+    assert "TIFF" in dlg.btn_run.toolTip()
+
+
+def test_dialog_cancel_shows_cancelling(qapp, tmp_path, monkeypatch):
+    (tmp_path / "a.mp4").write_bytes(b"x")
+    dlg, _controls = _dialog_with_controls(tmp_path)
+    dlg._populate(str(tmp_path))
+    monkeypatch.setattr(dlg._controller, "run", lambda items, s: None)
+    monkeypatch.setattr(dlg._controller, "cancel", lambda: None)
+    dlg._run()
+    dlg.btn_cancel.click()
+    assert dlg.lbl_overall.text().startswith("Cancelling")
+    assert not dlg.btn_cancel.isEnabled()
+
+
+def test_dialog_rerun_starts_from_fresh_rows(qapp, tmp_path, monkeypatch):
+    (tmp_path / "a.mp4").write_bytes(b"x")
+    dlg, _controls = _dialog_with_controls(tmp_path)
+    dlg._populate(str(tmp_path))
+    dlg._items[0].status = "cancelled"
+    dlg._set_row(0, 1, "cancelled")
+    seen = []
+    monkeypatch.setattr(dlg._controller, "run", lambda items, s: seen.append(list(items)))
+    dlg._run()
+    assert seen[0][0].status == "pending"
+    assert dlg.table.item(0, 1).text() == "pending"

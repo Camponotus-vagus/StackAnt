@@ -29,3 +29,8 @@ def test_zero_frames_raises():
 
 def test_one_frame_is_pyramid():
     assert choose_method(1, 100, 100) == "pyramid"
+
+
+def test_pyramid_unavailable_forces_focus_stack():
+    assert choose_method(10, 800, 600, pyramid_available=False) == "focus-stack"
+    assert choose_method(10, 800, 600, pyramid_available=True) == "pyramid"

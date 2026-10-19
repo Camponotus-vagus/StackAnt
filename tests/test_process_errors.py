@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -11,7 +12,7 @@ from PyQt6.QtCore import QEventLoop, QTimer
 from PyQt6.QtWidgets import QApplication
 
 from stackant.frame_extractor import FrameExtractor
-from stackant.stacker import FocusStacker
+from stackant.stacker import FocusStacker, is_opencl_failure
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="POSIX shell stubs")
 
@@ -96,3 +97,94 @@ def test_ffmpeg_crash_is_a_failure(qapp, tmp_path, monkeypatch):
     assert _wait_for(lambda: not ex.is_running)
     _wait_for(lambda: False, timeout_ms=100)
     assert [e[0] if isinstance(e, tuple) else e for e in events] == ["failed"]
+
+
+def test_focus_stack_bad_extra_cli_fails_cleanly(qapp, tmp_path):
+    st = FocusStacker()
+    events = _record(st)
+    st.stack(["a.tif"], str(tmp_path / "out.tif"), extra_cli='--x="oops')
+    assert events and events[0][0] == "failed"
+    assert "extra" in events[0][1].lower()
+    assert not st.is_running
+
+
+def test_focus_stack_opencl_signature_survives_log_flood(qapp, tmp_path, monkeypatch):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _stub_tool(
+        bin_dir, "focus-stack",
+        "echo \"can't create cl_mem handle\"; "
+        "i=0; while [ $i -lt 400 ]; do echo '[ 1/9] Grayscale aligned_frame_00023.tif padding padding padding'; "
+        "i=$((i+1)); done; exit 1",
+    )
+    monkeypatch.setenv("PATH", str(bin_dir))
+    st = FocusStacker()
+    events = _record(st)
+    st.stack(["a.tif"], str(tmp_path / "out.tif"))
+    assert _wait_for(lambda: events)
+    assert events[0][0] == "failed"
+    assert is_opencl_failure(events[0][1])
+
+
+def test_focus_stack_runs_in_frame_directory_with_bare_names(qapp, tmp_path, monkeypatch):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _stub_tool(bin_dir, "focus-stack", 'pwd > "$PWD/cwd.txt"; echo "$@" > "$PWD/args.txt"; exit 1')
+    monkeypatch.setenv("PATH", str(bin_dir))
+    frames_dir = tmp_path / "frames"
+    frames_dir.mkdir()
+    st = FocusStacker()
+    events = _record(st)
+    st.stack([str(frames_dir / "a.tif"), str(frames_dir / "b.tif")], str(tmp_path / "out.tif"))
+    assert _wait_for(lambda: events)
+    assert (frames_dir / "cwd.txt").read_text().strip() == str(frames_dir)
+    args = (frames_dir / "args.txt").read_text()
+    assert args.split()[-2:] == ["a.tif", "b.tif"]
+    assert f"--output={tmp_path / 'out.tif'}" in args
+
+
+def test_extractor_removes_stale_frames_and_handles_percent_dir(qapp, tmp_path, monkeypatch):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _stub_tool(bin_dir, "ffmpeg", "/usr/bin/touch frame_00000.tif frame_00001.tif")
+    _stub_tool(bin_dir, "ffprobe", "echo '{\"streams\":[{\"nb_frames\":\"2\"}]}'")
+    monkeypatch.setenv("PATH", str(bin_dir))
+    frames = tmp_path / "100%frames"
+    frames.mkdir()
+    (frames / "frame_00099.tif").write_bytes(b"stale")
+    ex = FrameExtractor()
+    got = []
+    ex.finished_ok.connect(got.append)
+    ex.extract(str(tmp_path / "v.mp4"), str(frames))
+    assert _wait_for(lambda: got)
+    assert [Path(p).name for p in got[0]] == ["frame_00000.tif", "frame_00001.tif"]
+    assert not ex.is_running
+    assert ex._probe is None
+
+
+def test_extractor_cancel_cleans_up_probe(qapp, tmp_path, monkeypatch):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _stub_tool(bin_dir, "ffmpeg", "sleep 30")
+    _stub_tool(bin_dir, "ffprobe", "sleep 30")
+    monkeypatch.setenv("PATH", str(bin_dir))
+    ex = FrameExtractor()
+    events = _record(ex)
+    ex.extract(str(tmp_path / "v.mp4"), str(tmp_path / "frames"))
+    assert ex._probe is not None
+    ex.cancel()
+    assert ex._probe is None
+    assert _wait_for(lambda: events)
+    assert events == ["cancelled"]
+
+
+def test_shutdown_kills_and_waits_for_a_running_stack(qapp, tmp_path, monkeypatch):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _stub_tool(bin_dir, "focus-stack", "sleep 30")
+    monkeypatch.setenv("PATH", str(bin_dir))
+    st = FocusStacker()
+    st.stack([str(tmp_path / "a.tif")], str(tmp_path / "out.tif"))
+    assert _wait_for(lambda: st._proc is not None and st._proc.processId() > 0)
+    assert st.shutdown(3000)
+    assert not st.is_running

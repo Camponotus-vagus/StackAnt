@@ -1,11 +1,13 @@
 """QApplication bootstrap with dependency gate."""
 from __future__ import annotations
 
+import contextlib
 import sys
+import traceback
 
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
-from . import config
+from . import config, tempfiles
 from .dependency_checker import check, missing_deps_message
 from .mainwindow import MainWindow
 
@@ -28,6 +30,23 @@ def main() -> int:
         dlg.exec()
         return 1
 
+    tempfiles.sweep_stale()
     window = MainWindow(statuses)
+    install_excepthook(window)
     window.show()
     return app.exec()
+
+
+def install_excepthook(window: MainWindow) -> None:
+    """Report uncaught slot exceptions instead of letting them kill the app.
+
+    With the default sys.excepthook, PyQt6 aborts the whole process on an
+    exception raised inside a slot; any custom hook keeps it alive.
+    """
+    def hook(exc_type, exc, tb) -> None:
+        text = "".join(traceback.format_exception(exc_type, exc, tb))
+        sys.__stderr__.write(text)
+        with contextlib.suppress(Exception):  # never raise from the hook itself
+            window.report_internal_error(text)
+
+    sys.excepthook = hook

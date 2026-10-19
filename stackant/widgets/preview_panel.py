@@ -56,9 +56,14 @@ class _PreviewLabel(QLabel):
     def clear_rubber(self) -> None:
         self._rubber.hide()
 
+    def show_rubber(self, rect: QRect) -> None:
+        self._rubber.setGeometry(rect)
+        self._rubber.show()
+
 
 class PreviewPanel(QWidget):
     restack_requested = pyqtSignal()
+    stacked_view_changed = pyqtSignal(str)  # Compare cycling switched the shown result
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -73,6 +78,7 @@ class PreviewPanel(QWidget):
 
         self._full_pixmap: QPixmap | None = None   # full-res currently displayed source
         self._scale: float = 1.0
+        self._crop_rect: QRect | None = None  # label coords, kept across view switches
 
         self._build_ui()
 
@@ -116,8 +122,18 @@ class PreviewPanel(QWidget):
         )
         pc = QVBoxLayout(preview_container)
         pc.setContentsMargins(4, 4, 4, 4)
-        pc.addWidget(self.preview_label, alignment=Qt.AlignmentFlag.AlignCenter)
-        pc.addStretch(1)
+        # The label is fixed at the scaled image size (up to PREVIEW_MAX_PX);
+        # scrolling lets a narrow pane show it instead of clipping it or
+        # forcing a wide window.
+        self.preview_scroll = QScrollArea()
+        self.preview_scroll.setWidgetResizable(False)
+        self.preview_scroll.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.preview_scroll.setStyleSheet(
+            "QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }"
+        )
+        self.preview_scroll.setWidget(self.preview_label)
+        pc.addWidget(self.preview_scroll)
         root.addWidget(preview_container, stretch=3)
 
         detail_header = QHBoxLayout()
@@ -162,6 +178,17 @@ class PreviewPanel(QWidget):
     # ---- public API ------------------------------------------------------
 
     def show_stacked(self, path: str) -> None:
+        """Show a fresh single stacking result, leaving any Compare state."""
+        self._reset_compare()
+        self._crop_rect = None
+        self._display_stacked(path)
+
+    def _reset_compare(self) -> None:
+        self._stacked_paths = {"pyramid": None, "focus-stack": None}
+        self._compare_view = None
+        self.btn_compare_view.setVisible(False)
+
+    def _display_stacked(self, path: str) -> None:
         self._stacked_path = path
         self._current_mode = "stacked"
         self._render_current()
@@ -233,14 +260,23 @@ class PreviewPanel(QWidget):
         self._full_pixmap = pm
         scaled, scale = scaled_for_preview(pm, config.PREVIEW_MAX_PX)
         self._scale = scale
+        same_geometry = self.preview_label.size() == scaled.size()
         self.preview_label.setPixmap(scaled)
         self.preview_label.setFixedSize(scaled.size())
-        self.preview_label.clear_rubber()
-        self._clear_detail()
+        # Keep the crop when switching between images of the same size
+        # (stacked vs input, Pyramid vs focus-stack): comparing the same
+        # detail across them is the point of those toggles.
+        if same_geometry and self._crop_rect is not None:
+            self.preview_label.show_rubber(self._crop_rect)
+            self._on_crop_drawn(self._crop_rect)
+        else:
+            self.preview_label.clear_rubber()
+            self._clear_detail()
 
     def _on_crop_drawn(self, rect: QRect) -> None:
         if self._full_pixmap is None:
             return
+        self._crop_rect = QRect(rect)
         inv = 1.0 / max(self._scale, 1e-6)
         full_rect = QRect(
             int(rect.x() * inv),
@@ -270,6 +306,7 @@ class PreviewPanel(QWidget):
         self._clear_detail()
 
     def _clear_detail(self) -> None:
+        self._crop_rect = None
         self.detail_label.clear()
         self.detail_label.setText(
             "Draw a rectangle on the preview above to inspect it."
@@ -309,7 +346,8 @@ class PreviewPanel(QWidget):
     def _show_compare(self, which: str) -> None:
         path = self._stacked_paths[which]
         if path:
-            self.show_stacked(path)
+            self._display_stacked(path)
+            self.stacked_view_changed.emit(path)
 
     def _cycle_compare_view(self) -> None:
         if self._compare_view == "pyramid":

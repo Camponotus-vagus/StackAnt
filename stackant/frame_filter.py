@@ -15,33 +15,48 @@ from dataclasses import dataclass, field
 import cv2
 import numpy as np
 
+from . import config
+from .imread import imread
+
 
 @dataclass(frozen=True)
 class FrameScore:
     index: int
     path: str
     laplacian_var: float
+    readable: bool = True
 
 
 def laplacian_variance(gray: np.ndarray) -> float:
     return float(cv2.Laplacian(gray, cv2.CV_64F).var())
 
 
-def score_image(path: str, max_edge: int = 512) -> float:
-    """Load an image, downscale the long edge to `max_edge`, return Laplacian variance.
-
-    Downscaling keeps scoring fast for 4K-ish frames while preserving the
-    relative sharpness ordering that matters for filtering.
-    """
-    img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+def _read_gray(path: str, max_edge: int) -> np.ndarray | None:
+    img = imread(path, cv2.IMREAD_GRAYSCALE)
     if img is None:
-        return 0.0
+        return None
     h, w = img.shape
     longest = max(h, w)
     if longest > max_edge:
         scale = max_edge / longest
         img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
-    return laplacian_variance(img)
+    return img
+
+
+def score_image(path: str, max_edge: int = 512) -> float:
+    """Load an image, downscale the long edge to `max_edge`, return Laplacian variance.
+
+    Downscaling keeps scoring fast for 4K-ish frames while preserving the
+    relative sharpness ordering that matters for filtering. Unreadable files
+    score 0.0; use `score_frames` to tell them apart from genuinely blurry ones.
+    """
+    img = _read_gray(path, max_edge)
+    return 0.0 if img is None else laplacian_variance(img)
+
+
+def _score_or_none(path: str, max_edge: int = 512) -> float | None:
+    img = _read_gray(path, max_edge)
+    return None if img is None else laplacian_variance(img)
 
 
 def score_frames(paths, progress_callback=None) -> list[FrameScore]:
@@ -61,14 +76,17 @@ def score_frames(paths, progress_callback=None) -> list[FrameScore]:
 
     # Limit max workers to 16 to balance speed against peak memory overhead.
     with concurrent.futures.ThreadPoolExecutor(max_workers=min(16, total)) as executor:
-        futures = {executor.submit(score_image, p): (i, p) for i, p in enumerate(paths)}
+        futures = {executor.submit(_score_or_none, p): (i, p) for i, p in enumerate(paths)}
         for done_count, future in enumerate(concurrent.futures.as_completed(futures), 1):
             i, p = futures[future]
             try:
                 score = future.result()
-            except Exception:  # noqa: BLE001 — fall back to 0.0 on any image decode/score failure
-                score = 0.0
-            results[i] = FrameScore(i, p, score)
+            except Exception:  # noqa: BLE001 — any decode/score failure marks the frame unreadable
+                score = None
+            if score is None or not np.isfinite(score):
+                results[i] = FrameScore(i, p, 0.0, readable=False)
+            else:
+                results[i] = FrameScore(i, p, score)
             if progress_callback is not None:
                 progress_callback(done_count, total)
 
@@ -77,10 +95,20 @@ def score_frames(paths, progress_callback=None) -> list[FrameScore]:
 
 def auto_threshold(scores: list[float], k: float = 1.0) -> float:
     """Floor threshold: mean - k * std. Frames at or below this are too blurry."""
-    if not scores:
-        return 0.0
     arr = np.asarray(scores, dtype=np.float64)
+    arr = arr[np.isfinite(arr)]
+    if arr.size == 0:
+        return 0.0
     return float(arr.mean() - k * arr.std())
+
+
+def auto_threshold_for(scored: list[FrameScore], k: float = 1.0) -> float:
+    """`auto_threshold` over readable frames only; 0.0 (keep all) when none are readable."""
+    return auto_threshold([f.laplacian_var for f in scored if f.readable], k)
+
+
+def count_unreadable(scored: list[FrameScore]) -> int:
+    return sum(1 for f in scored if not f.readable)
 
 
 def even_subsample(indices: list[int], target: int) -> list[int]:
@@ -94,7 +122,11 @@ def even_subsample(indices: list[int], target: int) -> list[int]:
     return sorted({indices[int(i)] for i in picks})
 
 
-def suggested_decimation_target(num_frames: int, lo: int = 50, hi: int = 100) -> int:
+def suggested_decimation_target(
+    num_frames: int,
+    lo: int = config.DECIMATION_LOW,
+    hi: int = config.DECIMATION_HIGH,
+) -> int:
     """Target count for the second-stage decimation.
 
     - Fewer than `lo` frames: keep all (no decimation needed).

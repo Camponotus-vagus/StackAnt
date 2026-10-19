@@ -35,6 +35,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Batch: a Cancel that lands just as a stack finishes no longer hangs the
   dialog; videos sharing a name (`clip.mp4` + `clip.mov`) get separate
   outputs; macOS `._*` sidecar files are no longer queued.
+- Pyramid alignment runs coarse-to-fine: a single ECC pass settled 10-30 px
+  off on sharp, finely textured frames. Registrations that did not converge
+  (low correlation, implausible scale/rotation/shear) are dropped instead of
+  ghosting the stack; the "all frames failed" error now actually fires.
+- 16-bit sources (e.g. 10-bit video, 16-bit TIFF folders) keep their depth
+  through the Pyramid stacker, and JPEG export of 16-bit images no longer
+  saturates to white.
+- Frames under paths with non-ASCII characters (Windows `C:\Users\José\…`)
+  are read correctly; unreadable frames are excluded instead of silently
+  disabling the blur filter.
+- Any unexpected error is reported in the status bar and log instead of
+  killing the app; in batch mode it fails only the affected video.
+- Temp frames of the previous video are deleted when a new one is loaded,
+  stale `stackant_*` temp dirs from crashed sessions are swept at startup, and
+  closing the window waits for running jobs instead of orphaning them.
+- Export writes atomically (a crash can't leave a truncated file that batch
+  skip-existing would treat as done).
+- Image folders sort naturally (`img_2` before `img_10`) and skip `._*` files.
+- focus-stack: Windows paths in extra options are kept; frames are passed
+  relative to their folder so long stacks fit Windows' command-line limit;
+  OpenCL retry triggers only on real OpenCL errors, also on long logs.
+- ffmpeg: frame-count probe no longer blocks the UI (header read, async);
+  a `%` in the temp path no longer breaks extraction.
+- Compare: cycling the view now also changes what Export writes, and a normal
+  stack afterwards leaves Compare mode. The crop stays put when toggling
+  between same-size views.
+- Batch: Run is disabled when no export format is selected; Cancel shows
+  "Cancelling…"; a re-run starts from fresh rows; `.m4v`/`.mts`/`.m2ts`
+  videos are picked up.
+- Settings: the per-video export folder is no longer saved as the default,
+  a forced focus-stack method (no opencv-contrib) no longer overwrites the
+  saved choice, and the halo radius survives being switched off.
+- Faster filmstrip mask updates and fewer parallel decodes for very large
+  frames; `run.py` hands over from macOS's Python 3.9 to a newer Python if
+  one is installed.
 
 ## [0.3.1] — 2026-06-08
 

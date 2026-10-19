@@ -57,3 +57,17 @@ def test_allow_missing_env_still_blocks_ffmpeg(monkeypatch):
     assert msg is not None
     assert "ffmpeg" in msg
     assert "focus-stack" not in msg
+
+
+def test_probe_version_survives_invalid_utf8(tmp_path):
+    import sys
+
+    from stackant.dependency_checker import _probe_version
+
+    if sys.platform == "win32":
+        pytest.skip("POSIX shell stub")
+    tool = tmp_path / "faketool"
+    tool.write_bytes(b"#!/bin/sh\nprintf 'versione \\xe8\\xff 1.0\\n'\n")
+    tool.chmod(0o755)
+    version = _probe_version(str(tool))
+    assert version is not None and "1.0" in version

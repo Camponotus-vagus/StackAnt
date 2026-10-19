@@ -23,6 +23,7 @@ class ExportControls(QGroupBox):
     def __init__(self, parent=None):
         super().__init__("Export", parent)
         self._default_folder: str = str(Path.home())
+        self._prefilled_folder: str | None = None
         self._build_ui()
         self.set_exportable(False)
 
@@ -118,8 +119,14 @@ class ExportControls(QGroupBox):
             folder = str(p.parent)
             stem = p.stem or "output"
         self._default_folder = folder
+        self._prefilled_folder = folder
         self.txt_folder.setText(folder)
         self.txt_name.setText(f"{stem}_stacked")
+
+    def folder_is_custom(self) -> bool:
+        """False while the folder is still the one prefill_for_input set."""
+        folder = self.txt_folder.text().strip()
+        return bool(folder) and folder != self._prefilled_folder
 
     def settings(self) -> dict:
         return {

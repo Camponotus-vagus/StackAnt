@@ -9,8 +9,8 @@ backend) is prone to on macro entomology subjects.
 Design tenets:
 - All helpers operate on float32 arrays in [0, 1] for numerical
   stability during pyramid collapse.
-- Input/output to/from disk is uint8 BGR (OpenCV convention) and the
-  caller takes care of the conversion.
+- Input/output to/from disk is uint8 or uint16 BGR (OpenCV convention);
+  16-bit inputs produce a 16-bit output.
 - Progress and cancellation are driven from the caller (see
   run_pyramid_stack + PyramidStacker below).
 """
@@ -27,6 +27,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
+
+from .imread import imread
 
 try:
     from cv2 import ximgproc as _ximgproc
@@ -216,6 +218,106 @@ def _mask_pyramid(mask: np.ndarray, levels: int) -> list[np.ndarray]:
 
 _ECC_CRITERIA = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 100, 1e-4)
 
+# ECC returns its final correlation even when it hit the iteration cap on a
+# bad warp; fusing such a frame ghosts. Matching frames score ~0.95+, so this
+# only rejects clearly unrelated or failed registrations.
+MIN_ECC_CORRELATION = 0.5
+# Focus-pull breathing changes scale by a few percent at most.
+MIN_WARP_SCALE = 0.8
+MAX_WARP_SCALE = 1.25
+MAX_WARP_ROTATION_DEG = 10.0
+MAX_WARP_ANISOTROPY = 1.15
+
+
+def _warp_is_plausible(warp: np.ndarray) -> bool:
+    a, b, c, d = (float(v) for v in warp[:, :2].ravel())
+    det = a * d - b * c
+    if det <= 0:
+        return False
+    if not MIN_WARP_SCALE <= math.sqrt(det) <= MAX_WARP_SCALE:
+        return False
+    if abs(math.degrees(math.atan2(c - b, a + d))) > MAX_WARP_ROTATION_DEG:
+        return False
+    # Singular-value ratio of the linear part: captures shear and
+    # non-uniform stretch.
+    trace_sq = a * a + b * b + c * c + d * d
+    disc = math.sqrt(max(trace_sq * trace_sq - 4 * det * det, 0.0))
+    s_max_sq = (trace_sq + disc) / 2
+    s_min_sq = (trace_sq - disc) / 2
+    if s_min_sq <= 0:
+        return False
+    return math.sqrt(s_max_sq / s_min_sq) <= MAX_WARP_ANISOTROPY
+
+
+def estimate_affine(
+    reference: np.ndarray,
+    moving: np.ndarray,
+    max_edge: int = 1024,
+) -> tuple[np.ndarray, bool]:
+    """Estimate the ECC affine warp aligning `moving` to `reference`.
+
+    Both inputs must be 2-D float32 (grayscale). Returns the 2x3 warp
+    (for cv2.WARP_INVERSE_MAP) and a success flag. On failure - ECC
+    error, low correlation, or an implausible warp - returns the
+    identity and ok=False.
+
+    ECC runs coarse-to-fine on downscaled copies (from _ECC_COARSEST_EDGE
+    up to max_edge), seeding each level with the previous estimate. A
+    single ECC pass at ~1024 px settles in a wrong local optimum on sharp,
+    finely textured frames (translation off by 10-30 px, compensated by a
+    spurious shear); starting coarse fixes that and still preserves
+    sub-pixel accuracy. Translation terms are rescaled between levels.
+    """
+    if reference.shape != moving.shape:
+        raise ValueError("reference and moving must share shape")
+    h, w = reference.shape
+    longest = max(h, w)
+    identity = np.eye(2, 3, dtype=np.float32)
+    warp = identity.copy()
+    correlation = 0.0
+    prev_scale: float | None = None
+    for edge in _ecc_level_edges(longest, max_edge):
+        scale = min(1.0, edge / longest)
+        if prev_scale is not None:
+            warp[:, 2] *= scale / prev_scale
+        if scale < 1.0:
+            size = (max(1, int(w * scale)), max(1, int(h * scale)))
+            ref_in = cv2.resize(reference, size, interpolation=cv2.INTER_AREA)
+            mov_in = cv2.resize(moving, size, interpolation=cv2.INTER_AREA)
+        else:
+            ref_in, mov_in = reference, moving
+        try:
+            correlation, warp = cv2.findTransformECC(
+                templateImage=ref_in,
+                inputImage=mov_in,
+                warpMatrix=warp,
+                motionType=cv2.MOTION_AFFINE,
+                criteria=_ECC_CRITERIA,
+                inputMask=None,
+                gaussFiltSize=5,
+            )
+        except cv2.error:
+            return identity, False
+        prev_scale = scale
+    if not (correlation >= MIN_ECC_CORRELATION and np.isfinite(warp).all()):
+        return identity, False
+    if not _warp_is_plausible(warp):
+        return identity, False
+    warp[:, 2] /= prev_scale
+    return warp, True
+
+
+_ECC_COARSEST_EDGE = 256
+
+
+def _ecc_level_edges(longest: int, max_edge: int) -> list[int]:
+    """Longest-edge sizes for the coarse-to-fine ECC levels, coarsest first."""
+    top = min(longest, max_edge)
+    edges = [top]
+    while edges[-1] // 2 >= _ECC_COARSEST_EDGE:
+        edges.append(edges[-1] // 2)
+    return edges[::-1]
+
 
 def align_to_reference(
     reference: np.ndarray,
@@ -224,56 +326,14 @@ def align_to_reference(
 ) -> tuple[np.ndarray, np.ndarray, bool]:
     """Align `moving` to `reference` using ECC with affine motion.
 
-    Both inputs must be 2-D float32 (grayscale). Returns the
-    warped moving image, the 2x3 affine warp matrix, and a success
-    flag. On ECC failure the original moving image is returned with
-    the identity warp and ok=False.
-
-    Optimized: Runs ECC iterations on downscaled representations (up to
-    max_edge=1024) and scales translation terms back to full resolution.
-    This accelerates registration by ~2.8x to 10x+ on high-resolution images
-    while preserving sub-pixel registration accuracy.
+    Returns the warped moving image, the 2x3 affine warp matrix, and a
+    success flag. On failure the original moving image is returned with
+    the identity warp and ok=False. See `estimate_affine`.
     """
-    if reference.shape != moving.shape:
-        raise ValueError("reference and moving must share shape")
+    warp, ok = estimate_affine(reference, moving, max_edge)
+    if not ok:
+        return moving, warp, False
     h, w = reference.shape
-    longest = max(h, w)
-    warp = np.eye(2, 3, dtype=np.float32)
-
-    if longest > max_edge:
-        scale = max_edge / longest
-        nw, nh = max(1, int(w * scale)), max(1, int(h * scale))
-        ref_small = cv2.resize(reference, (nw, nh), interpolation=cv2.INTER_AREA)
-        mov_small = cv2.resize(moving, (nw, nh), interpolation=cv2.INTER_AREA)
-        try:
-            _, warp_small = cv2.findTransformECC(
-                templateImage=ref_small,
-                inputImage=mov_small,
-                warpMatrix=warp,
-                motionType=cv2.MOTION_AFFINE,
-                criteria=_ECC_CRITERIA,
-                inputMask=None,
-                gaussFiltSize=5,
-            )
-            warp = warp_small
-            warp[0, 2] /= scale
-            warp[1, 2] /= scale
-        except cv2.error:
-            return moving, np.eye(2, 3, dtype=np.float32), False
-    else:
-        try:
-            _, warp = cv2.findTransformECC(
-                templateImage=reference,
-                inputImage=moving,
-                warpMatrix=warp,
-                motionType=cv2.MOTION_AFFINE,
-                criteria=_ECC_CRITERIA,
-                inputMask=None,
-                gaussFiltSize=5,
-            )
-        except cv2.error:
-            return moving, np.eye(2, 3, dtype=np.float32), False
-
     aligned = cv2.warpAffine(
         moving, warp, (w, h), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP
     )
@@ -284,21 +344,34 @@ def _auto_pyramid_depth(height: int, width: int) -> int:
     return max(3, math.floor(math.log2(min(height, width))) - 3)
 
 
-def _load_rgb_float(path: str) -> np.ndarray:
-    """Read an image from disk as float32 RGB in [0, 1]."""
-    bgr = cv2.imread(path, cv2.IMREAD_COLOR)
+def _load_rgb(path: str) -> tuple[np.ndarray, bool]:
+    """Read an image as float32 RGB in [0, 1]; also report whether it was 16-bit."""
+    bgr = imread(path, cv2.IMREAD_ANYDEPTH | cv2.IMREAD_COLOR)
     if bgr is None:
         raise OSError(f"could not read image: {path}")
+    if bgr.dtype == np.uint8:
+        max_value, is_16bit = 255.0, False
+    elif bgr.dtype == np.uint16:
+        max_value, is_16bit = 65535.0, True
+    else:
+        raise OSError(f"unsupported pixel type {bgr.dtype}: {path}")
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
     # Perform in-place float scaling to reduce temporary array memory allocations by 50%.
     arr = rgb.astype(np.float32)
-    arr *= 1.0 / 255.0
-    return arr
+    arr *= 1.0 / max_value
+    return arr, is_16bit
 
 
-def _save_rgb_float(path: str, image: np.ndarray) -> None:
+def _load_rgb_float(path: str) -> np.ndarray:
+    return _load_rgb(path)[0]
+
+
+def _save_rgb_float(path: str, image: np.ndarray, *, sixteen_bit: bool = False) -> None:
     # Streamline clipping and integer scale to avoid multiple intermediate float arrays.
-    rgb = np.clip(image * 255.0 + 0.5, 0, 255).astype(np.uint8)
+    if sixteen_bit:
+        rgb = np.clip(image * 65535.0 + 0.5, 0, 65535).astype(np.uint16)
+    else:
+        rgb = np.clip(image * 255.0 + 0.5, 0, 255).astype(np.uint8)
     bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     if not cv2.imwrite(path, bgr):
@@ -343,7 +416,7 @@ def run_pyramid_stack(
 
     # Alignment: use the middle frame as the reference.
     ref_idx = len(input_paths) // 2
-    ref_image = _load_rgb_float(input_paths[ref_idx])
+    ref_image, sixteen_bit = _load_rgb(input_paths[ref_idx])
     ref_gray = cv2.cvtColor(ref_image, cv2.COLOR_RGB2GRAY)
     h, w = ref_gray.shape
     n = len(input_paths)
@@ -364,7 +437,7 @@ def run_pyramid_stack(
             )
 
         gray = cv2.cvtColor(im, cv2.COLOR_RGB2GRAY)
-        _, warp, ok = align_to_reference(ref_gray, gray)
+        warp, ok = estimate_affine(ref_gray, gray)
         if ok:
             # Replicate rather than zero-fill the exposed border: black fill
             # creates a hard edge whose high sharpness wins the fusion and
@@ -405,45 +478,49 @@ def run_pyramid_stack(
                 top_up()
                 while pending:
                     _check_cancel()
-                    _, aligned = pending.popleft().result()
+                    idx, aligned = pending.popleft().result()
                     top_up()
                     processed_count += 1
-                    _progress(int(5 + 25 * processed_count / n), "Aligning frames")
+                    _progress(
+                        int(5 + 85 * processed_count / n), "Aligning + fusing frames"
+                    )
                     if aligned is not None:
                         yield aligned
                         continue
+                    if cancel_check():
+                        continue
                     dropped_count += 1
-                    if not drop_misaligned and not cancel_check():
-                        # idx is not easily available here without more bookkeeping,
-                        # but we can raise a generic error or refactor.
+                    if not drop_misaligned:
                         raise RuntimeError(
-                            "ECC alignment failed for a frame and drop_misaligned is False"
+                            f"ECC alignment failed for {input_paths[idx]} "
+                            "and drop_misaligned is False"
                         )
             finally:
                 # Fusion raised or the generator was closed: let queued frames
                 # return at once instead of being loaded and aligned for nothing.
                 abort.set()
 
-        if dropped_count == n:
+        if n > 1 and dropped_count == n - 1:
             raise RuntimeError(
-                f"All {n} frames failed ECC alignment. Subject may be moving."
+                f"All {n - 1} non-reference frames failed ECC alignment. "
+                "Subject may be moving."
             )
         if dropped_count > 0:
-            _progress(30, f"Dropped {dropped_count} misaligned frame(s)")
+            _progress(90, f"Dropped {dropped_count} misaligned frame(s)")
 
     # Pyramid depth.
     depth = pyramid_depth if pyramid_depth and pyramid_depth > 0 else _auto_pyramid_depth(
         h, w
     )
 
-    _progress(30, "Stacking frames")
+    _progress(5, "Aligning + fusing frames")
     _check_cancel()
     # fuse_images now consumes the stream lazily.
     fused = fuse_images(aligned_stream(), levels=depth, guided_radius=guided_radius)
     _check_cancel()
 
     _progress(95, "Writing output")
-    _save_rgb_float(output_path, fused)
+    _save_rgb_float(output_path, fused, sixteen_bit=sixteen_bit)
     _progress(100, "Done")
     return output_path
 
@@ -562,12 +639,30 @@ class PyramidStacker(QObject):
             self._cancel.set()
 
     def _cleanup_thread(self) -> None:
-        if self._thread is not None:
-            self._thread.quit()
-            self._thread.wait(3000)
-            self._thread.deleteLater()
-            self._thread = None
-            self._worker = None
+        if self._thread is None:
+            return
+        self._thread.quit()
+        # Deleting a QThread that is still running aborts the process, so
+        # keep the references (and is_running) until it has really stopped.
+        if not self._thread.wait(3000):
+            return
+        self._thread.deleteLater()
+        if self._worker is not None:
+            self._worker.deleteLater()
+        self._thread = None
+        self._worker = None
+
+    def shutdown(self, timeout_ms: int = 5000) -> bool:
+        """Cancel any run and wait for the thread to stop; True if stopped."""
+        self.cancel()
+        if self._thread is None:
+            return True
+        self._cancel.set()
+        self._thread.quit()
+        if not self._thread.wait(timeout_ms):
+            return False
+        self._cleanup_thread()
+        return True
 
     def _on_worker_done(self, path: str) -> None:
         self._cleanup_thread()

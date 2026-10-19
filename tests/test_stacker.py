@@ -2,6 +2,7 @@ from stackant.stacker import (
     build_focus_stack_args,
     is_opencl_failure,
     should_retry_without_opencl,
+    split_common_directory,
 )
 
 
@@ -90,3 +91,47 @@ def test_should_retry_blocked_by_each_guard():
     assert not should_retry_without_opencl(
         msg, compare_mode=False, already_retried=False, extra_cli="--no-opencl"
     )
+
+
+def test_opencl_banner_mentioning_opencl_is_not_a_failure():
+    assert not is_opencl_failure("OpenCL device: Intel(R) UHD Graphics\nUsing OpenCL")
+    assert is_opencl_failure("OpenCL error -5 in kernel")
+    assert is_opencl_failure("CL_INVALID_KERNEL_ARGS")
+
+
+def test_extra_cli_unbalanced_quote_raises_value_error():
+    import pytest
+    with pytest.raises(ValueError):
+        build_focus_stack_args(["a.tif"], "o.tif", extra_cli='--x="oops')
+
+
+def test_extra_cli_keeps_windows_backslashes_in_nt_mode(monkeypatch):
+    import stackant.stacker as st
+    monkeypatch.setattr(st.os, "name", "nt")
+    args = build_focus_stack_args(["a.tif"], "o.tif", extra_cli=r"--tmp=C:\Users\me\t")
+    assert r"--tmp=C:\Users\me\t" in args
+
+
+def test_split_common_directory_uses_bare_names(tmp_path):
+    frames = [str(tmp_path / f"f{i}.tif") for i in range(3)]
+    workdir, names = split_common_directory(frames)
+    assert workdir == str(tmp_path)
+    assert names == ["f0.tif", "f1.tif", "f2.tif"]
+
+
+def test_split_common_directory_mixed_dirs_unchanged(tmp_path):
+    frames = [str(tmp_path / "a.tif"), str(tmp_path / "sub" / "b.tif")]
+    assert split_common_directory(frames) == (None, frames)
+
+
+def test_split_common_directory_protects_dash_names(tmp_path):
+    _, names = split_common_directory([str(tmp_path / "-a.tif")])
+    assert names == ["./-a.tif"]
+
+
+def test_opencl_device_info_lines_are_not_failures():
+    from stackant.stacker import is_opencl_failure
+    assert not is_opencl_failure("Device type: CL_DEVICE_TYPE_GPU\nCL_PLATFORM_NAME: Apple")
+    assert is_opencl_failure("clEnqueueNDRangeKernel returned CL_OUT_OF_RESOURCES")
+    assert is_opencl_failure("error: CL_INVALID_COMMAND_QUEUE")
+    assert is_opencl_failure("CL_MEM_OBJECT_ALLOCATION_FAILURE")

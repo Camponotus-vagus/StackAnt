@@ -58,10 +58,40 @@ def ensure_venv() -> Path:
     return python
 
 
+_NEWER_PYTHONS = ("python3.13", "python3.12", "python3.11", "python3.10")
+# Where Homebrew (Apple silicon, Intel) and the python.org installer put
+# Python on macOS; the first two are often missing from a GUI-launched PATH.
+_EXTRA_DIRS = (
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/Library/Frameworks/Python.framework/Versions/Current/bin",
+)
+
+
+def find_newer_python() -> str | None:
+    for name in _NEWER_PYTHONS:
+        found = shutil.which(name)
+        if found:
+            return found
+        for folder in _EXTRA_DIRS:
+            candidate = Path(folder) / name
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                return str(candidate)
+    return None
+
+
 def main() -> None:
-    # run.py is the one file an older system Python may execute.
+    # run.py is the one file an older system Python may execute: macOS's
+    # /usr/bin/python3 is 3.9. Hand over to a newer one if it is installed.
     if sys.version_info < (3, 10):  # noqa: UP036
-        sys.exit(f"StackAnt needs Python 3.10 or newer (this is {sys.version.split()[0]}).")
+        newer = find_newer_python()
+        if newer and os.name != "nt":
+            os.execv(newer, [newer, str(Path(__file__).resolve()), *sys.argv[1:]])
+        sys.exit(
+            f"StackAnt needs Python 3.10 or newer (this is {sys.version.split()[0]}).\n"
+            "macOS: brew install python@3.12   (or the installer from python.org)\n"
+            "Then run this again: python3 run.py"
+        )
     python = ensure_venv()
     args = [str(python), str(ROOT / "main.py"), *sys.argv[1:]]
     if os.name == "nt":

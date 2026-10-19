@@ -7,6 +7,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pytest
 from PIL import Image
 from PyQt6.QtCore import QEventLoop, QTimer
 from PyQt6.QtWidgets import QApplication
@@ -17,6 +18,7 @@ from stackant.pyramid_stacker import (
     build_laplacian_pyramid,
     collapse_laplacian_pyramid,
     compute_sml,
+    estimate_affine,
     fuse_images,
     run_pyramid_stack,
     smooth_weights,
@@ -146,7 +148,7 @@ def test_run_pyramid_stack_produces_readable_tiff(tmp_path):
     paths = []
     for i, sigma in enumerate([0.0, 2.0, 4.0]):
         p = tmp_path / f"frame_{i:02d}.tif"
-        _write_synth_frame(p, sigma, seed=42 + i)
+        _write_synth_frame(p, sigma, seed=42)
         paths.append(str(p))
     out = tmp_path / "stacked.tif"
     result = run_pyramid_stack(
@@ -174,7 +176,7 @@ def test_pyramid_stacker_runs_to_completion(tmp_path):
     paths = []
     for i, sigma in enumerate([0.0, 2.0, 4.0]):
         p = tmp_path / f"frame_{i:02d}.tif"
-        _write_synth_frame(p, sigma, seed=42 + i)
+        _write_synth_frame(p, sigma, seed=42)
         paths.append(str(p))
 
     stacker = PyramidStacker()
@@ -231,8 +233,9 @@ def test_pyramid_stacker_cancellation_returns_cancelled_signal(tmp_path):
 
 def test_shifted_frames_leave_no_dark_border(tmp_path):
     rng = np.random.default_rng(0)
-    big = cv2.GaussianBlur(rng.random((260, 300, 3)).astype(np.float32), (0, 0), 2)
-    big = big * 0.5 + 0.4
+    # Wide blur gives ECC a basin big enough to converge from ~10 px offsets.
+    big = cv2.GaussianBlur(rng.random((260, 300, 3)).astype(np.float32), (0, 0), 6)
+    big = (big - big.min()) / (big.max() - big.min()) * 0.5 + 0.4
     paths = []
     for i, (dx, dy) in enumerate([(0, 0), (8, 5), (-6, 7), (4, -6), (-9, -4)]):
         crop = big[30 + dy:230 + dy, 30 + dx:270 + dx]
@@ -277,7 +280,7 @@ def test_alignment_keeps_only_a_small_window_of_frames_in_memory(tmp_path, monke
     loaded = 0
     consumed = 0
     peak_in_flight = 0
-    real_load = ps._load_rgb_float
+    real_load = ps._load_rgb
 
     def counting_load(path):
         nonlocal loaded, peak_in_flight
@@ -289,12 +292,12 @@ def test_alignment_keeps_only_a_small_window_of_frames_in_memory(tmp_path, monke
 
     def slow_consumer(pct, stage):
         nonlocal consumed
-        if stage == "Aligning frames":
+        if stage == "Aligning + fusing frames":
             with lock:
                 consumed += 1
             time.sleep(0.01)
 
-    monkeypatch.setattr(ps, "_load_rgb_float", counting_load)
+    monkeypatch.setattr(ps, "_load_rgb", counting_load)
     run_pyramid_stack(
         paths, str(tmp_path / "out.png"), pyramid_depth=3, guided_radius=4,
         drop_misaligned=True, progress_callback=slow_consumer,
@@ -302,3 +305,155 @@ def test_alignment_keeps_only_a_small_window_of_frames_in_memory(tmp_path, monke
     )
     assert loaded == n
     assert peak_in_flight <= 8, f"{peak_in_flight} frames held at once"
+
+
+def _noise_gray(seed, size=(128, 128)):
+    return np.random.default_rng(seed).random(size, dtype=np.float32)
+
+
+def test_estimate_affine_rejects_unrelated_content():
+    warp, ok = estimate_affine(_noise_gray(1), _noise_gray(2))
+    assert not ok
+    assert np.allclose(warp, np.eye(2, 3))
+
+
+def test_estimate_affine_rejects_heavy_distortion():
+    ref = cv2.GaussianBlur(_noise_gray(3, (200, 200)), (0, 0), 6)
+    M = np.float32([[1.6, 0.0, 0.0], [0.0, 1.6, 0.0]])
+    zoomed = cv2.warpAffine(ref, M, (200, 200))
+    _warp, ok = estimate_affine(ref, zoomed)
+    assert not ok
+
+
+def test_estimate_affine_accepts_small_translation():
+    ref = cv2.GaussianBlur(_noise_gray(4, (200, 200)), (0, 0), 6)
+    ref = (ref - ref.min()) / (ref.max() - ref.min())
+    shifted = cv2.warpAffine(
+        ref, np.float32([[1, 0, 3], [0, 1, 2]]), (200, 200),
+        borderMode=cv2.BORDER_REPLICATE,
+    )
+    warp, ok = estimate_affine(ref, shifted)
+    assert ok
+    assert abs(warp[0, 2] - 3) < 0.5
+    assert abs(warp[1, 2] - 2) < 0.5
+
+
+def _write_noise_png(path, seed):
+    rng = np.random.default_rng(seed)
+    cv2.imwrite(str(path), rng.integers(0, 255, (96, 96, 3), dtype=np.uint8))
+    return str(path)
+
+
+def _stack(paths, out, drop):
+    return run_pyramid_stack(
+        paths, str(out), pyramid_depth=3, guided_radius=4, drop_misaligned=drop,
+        progress_callback=None, cancel_check=lambda: False,
+    )
+
+
+def test_all_non_reference_frames_failing_raises(tmp_path):
+    paths = [_write_noise_png(tmp_path / f"f{i}.png", i) for i in range(3)]
+    with pytest.raises(RuntimeError, match="failed ECC alignment"):
+        _stack(paths, tmp_path / "out.png", drop=True)
+
+
+def test_strict_mode_error_names_failed_frame(tmp_path):
+    paths = [_write_noise_png(tmp_path / f"f{i}.png", i) for i in range(3)]
+    with pytest.raises(RuntimeError) as exc:
+        _stack(paths, tmp_path / "out.png", drop=False)
+    assert any(p in str(exc.value) for p in (paths[0], paths[2]))
+
+
+def test_16bit_input_gives_16bit_output(tmp_path):
+    rng = np.random.default_rng(5)
+    base = cv2.GaussianBlur(rng.random((96, 96, 3)).astype(np.float32), (0, 0), 2)
+    paths = []
+    for i in range(3):
+        p = str(tmp_path / f"f{i}.tif")
+        cv2.imwrite(p, (base * 60000 + 100).astype(np.uint16))
+        paths.append(p)
+    out = tmp_path / "out.tif"
+    _stack(paths, out, drop=True)
+    result = cv2.imread(str(out), cv2.IMREAD_ANYDEPTH | cv2.IMREAD_COLOR)
+    assert result.dtype == np.uint16
+    assert (result % 257 != 0).any(), "values were quantised to 8 bits"
+
+
+def test_8bit_input_gives_8bit_output(tmp_path):
+    paths = [_write_noise_png(tmp_path / "a.png", 1)]
+    out = tmp_path / "out.png"
+    _stack(paths, out, drop=True)
+    assert cv2.imread(str(out), cv2.IMREAD_ANYDEPTH | cv2.IMREAD_COLOR).dtype == np.uint8
+
+
+def test_progress_spans_alignment_and_fusion(tmp_path):
+    paths = [_write_noise_png(tmp_path / "a.png", 1)] * 4
+    seen = []
+    run_pyramid_stack(
+        paths, str(tmp_path / "o.png"), pyramid_depth=3, guided_radius=4,
+        drop_misaligned=True, progress_callback=lambda p, s: seen.append((p, s)),
+        cancel_check=lambda: False,
+    )
+    fusing = [p for p, s in seen if s == "Aligning + fusing frames"]
+    assert max(fusing) == 90
+    assert fusing == sorted(fusing)
+
+
+def test_cleanup_keeps_thread_that_did_not_stop():
+    _make_app()
+
+    class StuckThread:
+        deleted = False
+
+        def quit(self):
+            pass
+
+        def wait(self, _ms):
+            return False
+
+        def deleteLater(self):
+            self.deleted = True
+
+    stacker = PyramidStacker()
+    stuck = StuckThread()
+    stacker._thread = stuck
+    stacker._cleanup_thread()
+    assert stacker._thread is stuck
+    assert not stuck.deleted
+    stacker._thread = None
+
+
+def test_shutdown_cancels_and_waits_for_thread(tmp_path):
+    _make_app()
+    paths = []
+    for i in range(8):
+        p = tmp_path / f"frame_{i:02d}.tif"
+        _write_synth_frame(p, float(i), seed=7 + i, size=(512, 512))
+        paths.append(str(p))
+    stacker = PyramidStacker()
+    stacker.stack(
+        input_paths=paths, output_path=str(tmp_path / "o.tif"),
+        pyramid_depth=None, guided_radius=8, drop_misaligned=True,
+    )
+    assert stacker.shutdown(20000)
+    assert not stacker.is_running
+
+
+def test_estimate_affine_is_accurate_on_sharp_fine_texture():
+    # A single ECC pass at ~1024 px used to settle ~10-30 px off on sharp,
+    # finely textured frames (wrong translation offset by a fake shear).
+    from stackant.pyramid_stacker import estimate_affine
+    rng = np.random.default_rng(1)
+    h, w = 720, 1280
+    img = np.full((h, w), 0.8, np.float32)
+    cv2.ellipse(img, (640, 360), (260, 110), 15, 0, 360, 0.25, -1)
+    cv2.circle(img, (930, 300), 70, 0.2, -1)
+    tex = cv2.GaussianBlur(rng.random((h, w)).astype(np.float32), (0, 0), 1.2)
+    img = np.clip(img + (img < 0.5) * (tex - 0.5) * 0.3, 0, 1)
+    true_warp = np.float32([[1.02, 0, 6], [0, 1.02, 3]])
+    moving = cv2.warpAffine(img, true_warp, (w, h), borderMode=cv2.BORDER_REPLICATE)
+    warp, ok = estimate_affine(img, moving)
+    assert ok
+    pts = np.array([[640, 360, 1], [400, 300, 1], [900, 300, 1], [640, 550, 1]],
+                   np.float32).T
+    assert np.abs(warp @ pts - true_warp @ pts).max() < 0.5

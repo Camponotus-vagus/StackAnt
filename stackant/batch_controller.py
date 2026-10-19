@@ -12,10 +12,12 @@ from .batch import BatchItem, BatchSettings, is_already_done, output_targets
 from .exporter import export_jpeg, export_tiff
 from .frame_filter import (
     FilterState,
-    auto_threshold,
+    auto_threshold_for,
+    count_unreadable,
     score_frames,
     suggested_decimation_target,
 )
+from .pyramid_stacker import GUIDED_FILTER_AVAILABLE
 from .stacker import should_retry_without_opencl
 from .stacking import choose_method
 
@@ -90,8 +92,12 @@ class BatchController(QObject):
     def _start_extract(self, item: BatchItem) -> None:
         item.status = "running"
         item.step = "extract"
-        self._temp_dir = tempfiles.make_temp_dir()
         self.item_started.emit(self._idx)
+        try:
+            self._temp_dir = tempfiles.make_temp_dir()
+        except OSError as exc:
+            self._fail_item(f"cannot create temp dir: {exc}")
+            return
         self.item_status.emit(self._idx, "extracting")
         self._extractor.extract(
             item.video_path, str(self._temp_dir),
@@ -112,7 +118,7 @@ class BatchController(QObject):
 
     def _finish(self) -> None:
         summary = {"done": 0, "failed": 0, "skipped": 0, "cancelled": 0,
-                   "total": len(self._items)}
+                   "pending": 0, "total": len(self._items)}
         for it in self._items:
             if it.status in summary:
                 summary[it.status] += 1
@@ -129,17 +135,13 @@ class BatchController(QObject):
         if self._cancelled:
             self._on_worker_cancelled()
             return
-        self.item_status.emit(self._idx, "scoring")
-        scores = [
-            s.laplacian_var
-            for s in score_frames(frames, progress_callback=self._scoring_progress)
-        ]
-        threshold = auto_threshold(scores)
-        target = self._settings.cap or suggested_decimation_target(len(scores))
-        mask = FilterState(
-            scores=scores, threshold=threshold, decimation_target=target
-        ).kept_mask()
-        kept = [p for p, keep in zip(frames, mask) if keep]
+        # Failure isolation: anything raised while scoring must fail this
+        # video only, not escape the slot and end the unattended run.
+        try:
+            kept = self._filter_frames(frames)
+        except Exception as exc:  # noqa: BLE001
+            self._fail_item(f"scoring failed: {type(exc).__name__}: {exc}")
+            return
         # A Cancel during scoring's processEvents() pump lands here (no worker was
         # running to emit `cancelled`), so finalize the run before launching a stack.
         if self._cancelled:
@@ -149,7 +151,27 @@ class BatchController(QObject):
             self._fail_item("no frames kept after filtering")
             return
         self._kept = kept
-        self._start_stack()
+        try:
+            self._start_stack()
+        except Exception as exc:  # noqa: BLE001
+            self._fail_item(f"could not start stacking: {type(exc).__name__}: {exc}")
+
+    def _filter_frames(self, frames: list[str]) -> list[str]:
+        self.item_status.emit(self._idx, "scoring")
+        scored = score_frames(frames, progress_callback=self._scoring_progress)
+        unreadable = count_unreadable(scored)
+        if unreadable:
+            self.log.emit(f"[batch] {unreadable} frame(s) could not be read; excluded")
+        target = self._settings.cap or suggested_decimation_target(len(scored))
+        state = FilterState(
+            scores=[s.laplacian_var for s in scored],
+            threshold=auto_threshold_for(scored),
+            decimation_target=target,
+        )
+        for s in scored:
+            if not s.readable:
+                state.manual_overrides[s.index] = False
+        return [p for p, keep in zip(frames, state.kept_mask()) if keep]
 
     def _scoring_progress(self, done: int, total: int) -> None:
         self.item_progress.emit(self._idx, 40 + int(15 * done / max(1, total)))
@@ -163,7 +185,9 @@ class BatchController(QObject):
         method = self._settings.method
         if method == "auto":
             w, h = _first_frame_size(self._kept[0])
-            method = choose_method(len(self._kept), w, h)
+            method = choose_method(
+                len(self._kept), w, h, pyramid_available=GUIDED_FILTER_AVAILABLE
+            )
             self.log.emit(f"[auto] {method} for {len(self._kept)} frames at {w}x{h}")
         self.item_status.emit(self._idx, f"stacking ({method})")
         self._stack_method = method
@@ -197,7 +221,7 @@ class BatchController(QObject):
                 else:
                     export_jpeg(stacked, str(target), quality=self._settings.export["quality"])
                 written.append(str(target))
-        except OSError as exc:
+        except Exception as exc:  # noqa: BLE001 — isolate the failure to this video
             self._fail_item(f"export failed: {exc}")
             return
         item.status = "done"

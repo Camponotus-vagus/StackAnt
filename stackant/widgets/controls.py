@@ -16,9 +16,14 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from ..batch import VIDEO_EXTENSIONS
 from .export_controls import ExportControls
 from .filter_controls import FilterControls
 from .stack_controls import StackControls
+
+_VIDEO_FILTER = (
+    "Videos (" + " ".join(f"*{ext}" for ext in sorted(VIDEO_EXTENSIONS)) + ");;All files (*)"
+)
 
 
 class ControlsPanel(QFrame):
@@ -106,7 +111,7 @@ class ControlsPanel(QFrame):
             return
         if not isinstance(path, str):
             path, _ = QFileDialog.getOpenFileName(
-                self, "Open video", "", "Videos (*.mp4 *.mov *.avi *.mkv);;All files (*)"
+                self, "Open video", "", _VIDEO_FILTER
             )
         if path:
             self._set_input(path, is_folder=False)
