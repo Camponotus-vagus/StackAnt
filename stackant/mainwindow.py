@@ -1,6 +1,7 @@
 """Main application window — wires controls, filter, filmstrip, preview, subprocesses."""
 from __future__ import annotations
 
+import time
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -25,6 +26,7 @@ from .frame_extractor import FrameExtractor
 from .frame_filter import (
     FilterState,
     auto_threshold,
+    auto_threshold_for,
     score_frames,
     suggested_decimation_target,
 )
@@ -60,6 +62,7 @@ class MainWindow(QMainWindow):
         # Context for a one-shot CPU retry after a focus-stack OpenCL failure.
         self._fs_retry_ctx: tuple[list[str], str, dict] | None = None
         self._fs_retried: bool = False
+        self._last_progress_pump: float = 0.0
 
         self._build_ui()
         self._build_menu()
@@ -172,7 +175,21 @@ class MainWindow(QMainWindow):
     def _open_batch_dialog(self) -> None:
         from .widgets.batch_dialog import BatchDialog
 
-        BatchDialog(self.controls, self).exec()
+        dlg = BatchDialog(self.controls, self)
+        dlg.exec()
+        # Parented to the window, so without this every Ctrl+B would leak a
+        # dialog plus its extractor and both stackers until exit.
+        dlg.deleteLater()
+
+    def report_internal_error(self, text: str) -> None:
+        """Surface an uncaught exception (see app.install_excepthook)."""
+        self.log_panel.append(f"\n[internal error]\n{text}")
+        last = text.strip().splitlines()[-1] if text.strip() else "unknown error"
+        self.statusBar().showMessage(f"Internal error: {last}  (See log panel for details.)")
+        if not self._job_running():
+            self._compare_mode = False
+            self._set_stacking_ui(False)
+            self._set_busy(False)
 
     def _apply_saved_defaults(self) -> None:
         geom, state = settings.load_window_state()
@@ -194,6 +211,8 @@ class MainWindow(QMainWindow):
         sc.spn_consistency.setValue(sp["consistency"])
         sc.chk_denoise.setChecked(sp["denoise"])
         sc.spn_sharp.setValue(sp["sharp_strength"])
+        if sp["halo_value"] is not None:
+            sc.spn_halo.setValue(sp["halo_value"])
         if sp["halo_radius"] is not None:
             sc.chk_halo.setChecked(True)
             sc.spn_halo.setValue(sp["halo_radius"])
@@ -241,6 +260,7 @@ class MainWindow(QMainWindow):
         self.filmstrip.currentItemChanged.connect(self._on_filmstrip_selection_changed)
 
         self.preview_panel.restack_requested.connect(self._on_stack_requested)
+        self.preview_panel.stacked_view_changed.connect(self._on_stacked_view_changed)
 
         self.controls.export_controls.export_requested.connect(self._on_export_requested)
 
@@ -282,11 +302,18 @@ class MainWindow(QMainWindow):
         self.filmstrip.clear()
         self._filter_state = None
         self._stacked_output = None
-        self._current_temp_dir = None
+        self._discard_temp_dir()
         self.preview_panel.clear()
         self.controls.filter_controls.set_scored(False)
         self.controls.stack_controls.set_ready(False)
         self.controls.export_controls.set_exportable(False)
+
+    def _discard_temp_dir(self) -> None:
+        # Each extraction writes the whole video as lossless TIFFs; keeping old
+        # dirs until exit can fill the disk over a session of 4K clips.
+        if self._current_temp_dir is not None:
+            tempfiles.remove_temp_dir(self._current_temp_dir)
+            self._current_temp_dir = None
 
     def _on_video_selected(self, path: str) -> None:
         self._reset_pipeline_state()
@@ -305,6 +332,9 @@ class MainWindow(QMainWindow):
         video_path = self.controls.input_path
         if not video_path:
             return
+        # The filmstrip and any stacked result point into the old temp dir,
+        # which is about to be deleted.
+        self._reset_pipeline_state()
         self._current_temp_dir = tempfiles.make_temp_dir()
         self.progress.setVisible(True)
         self.progress.setValue(0)
@@ -362,7 +392,12 @@ class MainWindow(QMainWindow):
             self.progress.setValue(0)
         else:
             self.progress.setValue(min(100, int(done * 100 / total)))
-        QApplication.processEvents()
+        # Pumping once per frame dominates the cost of a fast decode/score
+        # loop with hundreds of frames; ~30 updates a second is enough.
+        now = time.monotonic()
+        if now - self._last_progress_pump >= 0.03 or done >= total:
+            self._last_progress_pump = now
+            QApplication.processEvents()
 
     def _run_scoring(self, frames: list[str]) -> None:
         self.statusBar().showMessage(f"Scoring {len(frames)} frames…")
@@ -371,12 +406,19 @@ class MainWindow(QMainWindow):
         scored = score_frames(frames, progress_callback=self._drive_progress)
         scores = [s.laplacian_var for s in scored]
         target = suggested_decimation_target(len(scores))
-        threshold = auto_threshold(scores)
+        threshold = auto_threshold_for(scored)
         self._filter_state = FilterState(
             scores=scores,
             threshold=threshold,
             decimation_target=target if target < len(scores) else None,
         )
+        unreadable = [s.index for s in scored if not s.readable]
+        for i in unreadable:
+            self._filter_state.manual_overrides[i] = False
+        if unreadable:
+            self.log_panel.append(
+                f"[scoring] {len(unreadable)} frame(s) could not be read and were excluded."
+            )
 
         fc = self.controls.filter_controls
         fc.set_scored(True)
@@ -464,7 +506,9 @@ class MainWindow(QMainWindow):
                     w, h = _im.size
             except Exception:  # noqa: BLE001
                 w, h = 1920, 1080
-            method = choose_method(len(kept), w, h)
+            method = choose_method(
+                len(kept), w, h, pyramid_available=GUIDED_FILTER_AVAILABLE
+            )
             self.log_panel.append(
                 f"[auto] chose {method} for {len(kept)} frames at {w}x{h}"
             )
@@ -681,6 +725,10 @@ class MainWindow(QMainWindow):
             status = "Compare: both methods failed (see log)."
         self.statusBar().showMessage(status, 10000)
 
+    def _on_stacked_view_changed(self, path: str) -> None:
+        # Cycling the Compare view changes which result Export writes.
+        self._stacked_output = path
+
     # ---- export ----------------------------------------------------------
 
     def _on_export_requested(self) -> None:
@@ -736,15 +784,18 @@ class MainWindow(QMainWindow):
     # ---- close / persistence --------------------------------------------
 
     def closeEvent(self, event) -> None:
-        # Cancel any running processes so they don't keep writing to temp
-        self._extractor.cancel()
-        self._stacker.cancel()
-        self._pyramid_stacker.cancel()
-        # Persist settings
+        self._shutdown_workers()
         settings.save_window_state(self.saveGeometry(), self.saveState())
-        ec = self.controls.export_controls.settings()
+        export_controls = self.controls.export_controls
+        ec = export_controls.settings()
+        # The folder field is prefilled with each input's own folder after a
+        # stack; only a folder the user chose is a default worth keeping.
+        folder = (
+            ec["folder"] if export_controls.folder_is_custom()
+            else settings.load_export_defaults()["folder"]
+        )
         settings.save_export_defaults(
-            folder=ec["folder"], quality=ec["quality"],
+            folder=folder, quality=ec["quality"],
             tiff=ec["tiff"], jpeg=ec["jpeg"],
         )
         sc = self.controls.stack_controls
@@ -753,10 +804,14 @@ class MainWindow(QMainWindow):
             denoise=sc.chk_denoise.isChecked(),
             sharp_strength=sc.spn_sharp.value(),
             halo_radius=sc.spn_halo.value() if sc.chk_halo.isChecked() else None,
+            halo_value=sc.spn_halo.value(),
             extra_cli=sc.txt_extra.text().strip(),
             no_opencl=sc.chk_no_opencl.isChecked(),
         )
-        settings.save_method(sc.method())
+        # Without opencv-contrib the method is forced to focus-stack; saving
+        # that would overwrite the user's real choice for when it is back.
+        if GUIDED_FILTER_AVAILABLE:
+            settings.save_method(sc.method())
         pp = sc.pyramid_params()
         settings.save_pyramid_params(
             depth=pp["pyramid_depth"] if pp["pyramid_depth"] else -1,
@@ -765,6 +820,20 @@ class MainWindow(QMainWindow):
         )
         # tempfiles.cleanup_all registered via atexit
         super().closeEvent(event)
+
+    def _shutdown_workers(self) -> None:
+        # Disconnect first: the cancelled/failed slots must not run against a
+        # window that is being torn down. Then wait, so no ffmpeg/focus-stack
+        # is still writing into a temp dir that atexit is about to delete.
+        for worker in (self._extractor, self._stacker, self._pyramid_stacker):
+            for sig in (worker.finished_ok, worker.failed, worker.cancelled):
+                try:
+                    sig.disconnect()
+                except TypeError:
+                    pass
+        self._extractor.shutdown(2000)
+        self._stacker.shutdown(2000)
+        self._pyramid_stacker.shutdown(5000)
 
     def _show_tool_statuses(self, statuses: Sequence[ToolStatus] | None) -> None:
         if not statuses:

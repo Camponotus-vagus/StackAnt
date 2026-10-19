@@ -62,12 +62,17 @@ def save_stack_params(
     halo_radius: int | None,
     extra_cli: str,
     no_opencl: bool,
+    halo_value: int | None = None,
 ) -> None:
+    """`halo_radius` is None when the halo option is off; `halo_value` keeps
+    the spin-box value either way so it survives being switched off."""
     s = _s()
     s.setValue("stack/consistency", int(consistency))
     s.setValue("stack/denoise", bool(denoise))
     s.setValue("stack/sharp_strength", int(sharp_strength))
     s.setValue("stack/halo_radius", -1 if halo_radius is None else int(halo_radius))
+    if halo_value is not None:
+        s.setValue("stack/halo_value", int(halo_value))
     s.setValue("stack/extra_cli", extra_cli or "")
     s.setValue("stack/no_opencl", bool(no_opencl))
 
@@ -75,6 +80,7 @@ def save_stack_params(
 def load_stack_params() -> dict:
     s = _s()
     halo = s.value("stack/halo_radius", -1, type=int)
+    halo_value = s.value("stack/halo_value", -1, type=int)
     return {
         "consistency": s.value("stack/consistency", config.FOCUS_STACK_CONSISTENCY, type=int),
         "denoise": s.value("stack/denoise", config.FOCUS_STACK_DENOISE, type=bool),
@@ -82,6 +88,7 @@ def load_stack_params() -> dict:
             "stack/sharp_strength", config.FOCUS_STACK_SHARP_STRENGTH, type=int
         ),
         "halo_radius": None if halo < 0 else halo,
+        "halo_value": None if halo_value < 0 else halo_value,
         "extra_cli": s.value("stack/extra_cli", "", type=str),
         "no_opencl": s.value(
             "stack/no_opencl", config.FOCUS_STACK_NO_OPENCL_DEFAULT, type=bool

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import os
 
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QIcon, QImage, QKeyEvent, QPixmap
@@ -16,6 +17,24 @@ from ..thumbnails import (
 _THUMB_PX = 110
 _PATH_ROLE = Qt.ItemDataRole.UserRole
 _INDEX_ROLE = Qt.ItemDataRole.UserRole + 1
+_MAX_WORKERS = 16
+_LARGE_FRAME_BYTES = 50 * 1024 * 1024
+_HUGE_FRAME_BYTES = 200 * 1024 * 1024
+
+
+def _thumbnail_workers(paths, total: int) -> int:
+    """Fewer parallel decodes for large frames: each holds a full-resolution image in memory."""
+    try:
+        size = os.path.getsize(paths[0])
+    except OSError:
+        size = 0
+    if size > _HUGE_FRAME_BYTES:
+        cap = 2
+    elif size > _LARGE_FRAME_BYTES:
+        cap = 4
+    else:
+        cap = _MAX_WORKERS
+    return max(1, min(cap, total))
 
 
 class Filmstrip(QListWidget):
@@ -38,8 +57,9 @@ class Filmstrip(QListWidget):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
-        self._base_pixmaps: list = []
-        self._rejected_pixmaps: list = []
+        self._kept_icons: list[QIcon] = []
+        self._rejected_icons: list[QIcon] = []
+        self._last_mask: list[bool] = []
 
         self.itemDoubleClicked.connect(self._on_item_double_clicked)
         self.setToolTip(
@@ -59,8 +79,9 @@ class Filmstrip(QListWidget):
         threads using ThreadPoolExecutor while preserving exact 1:1 input order.
         """
         self.clear()
-        self._base_pixmaps = []
-        self._rejected_pixmaps = []
+        self._kept_icons = []
+        self._rejected_icons = []
+        self._last_mask = []
         total = len(paths)
         if total == 0:
             return
@@ -68,7 +89,7 @@ class Filmstrip(QListWidget):
         # Parallelize CPU/IO image decoding across CPU cores
         raw_results: list[tuple[bytes, int, int] | None] = [None] * total
         with concurrent.futures.ThreadPoolExecutor(
-            max_workers=min(16, total)
+            max_workers=_thumbnail_workers(paths, total)
         ) as executor:
             futures = {
                 executor.submit(make_thumbnail_data, p, _THUMB_PX): i
@@ -93,9 +114,11 @@ class Filmstrip(QListWidget):
                 pm = QPixmap.fromImage(qimg.copy())
             else:
                 pm = make_placeholder_pixmap(_THUMB_PX)
-            self._base_pixmaps.append(pm)
-            self._rejected_pixmaps.append(make_rejected_pixmap(pm))
-            item = QListWidgetItem(QIcon(pm), f"{i + 1}")
+            kept_icon = QIcon(pm)
+            self._kept_icons.append(kept_icon)
+            self._rejected_icons.append(QIcon(make_rejected_pixmap(pm)))
+            self._last_mask.append(True)
+            item = QListWidgetItem(kept_icon, f"{i + 1}")
             item.setData(_PATH_ROLE, p)
             item.setData(_INDEX_ROLE, i)
             self.addItem(item)
@@ -105,9 +128,11 @@ class Filmstrip(QListWidget):
 
     def apply_mask(self, mask: list[bool]) -> None:
         for i in range(min(self.count(), len(mask))):
-            kept = mask[i]
-            pm = self._base_pixmaps[i] if kept else self._rejected_pixmaps[i]
-            self.item(i).setIcon(QIcon(pm))
+            kept = bool(mask[i])
+            if kept == self._last_mask[i]:
+                continue
+            self._last_mask[i] = kept
+            self.item(i).setIcon(self._kept_icons[i] if kept else self._rejected_icons[i])
 
     def frame_paths(self) -> list[str]:
         return [self.item(i).data(_PATH_ROLE) for i in range(self.count())]

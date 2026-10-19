@@ -50,16 +50,21 @@ class BatchDialog(QDialog):
         # stay open until batch_finished re-enables Close, so workers + temp dirs
         # are torn down cleanly instead of orphaned.
         if self._running:
-            self._controller.cancel()
+            self._cancel()
             return
         super().reject()
 
     def closeEvent(self, event) -> None:
         if self._running:
-            self._controller.cancel()
+            self._cancel()
             event.ignore()
             return
         super().closeEvent(event)
+
+    def _cancel(self) -> None:
+        self.btn_cancel.setEnabled(False)
+        self.lbl_overall.setText("Cancelling… (finishing the current step)")
+        self._controller.cancel()
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -112,7 +117,7 @@ class BatchDialog(QDialog):
         self.btn_cancel = QPushButton("Cancel")
         self.btn_cancel.setToolTip("Cancel running batch processing")
         self.btn_cancel.setAccessibleName("Cancel batch processing")
-        self.btn_cancel.clicked.connect(self._controller.cancel)
+        self.btn_cancel.clicked.connect(self._cancel)
         self.btn_cancel.setEnabled(False)
         self.btn_close = QPushButton("Close")
         self.btn_close.setToolTip("Close batch dialog")
@@ -144,8 +149,14 @@ class BatchDialog(QDialog):
             self._populate(path)
 
     def _populate(self, folder: str) -> None:
+        self._fill_queue(discover_videos(folder))
+        self.lbl_overall.setText(f"{len(self._items)} video(s) found.")
+        self._refresh_summary()
+        self._set_run_enabled()
+
+    def _fill_queue(self, videos: list[str]) -> None:
         export = self._controls.snapshot_for_batch().export
-        self._items = [BatchItem(v) for v in discover_videos(folder)]
+        self._items = [BatchItem(v) for v in videos]
         self.table.setRowCount(len(self._items))
         for row, item in enumerate(self._items):
             done = is_already_done(item.video_path, export)
@@ -154,9 +165,6 @@ class BatchDialog(QDialog):
             self.table.setItem(row, 0, QTableWidgetItem(Path(item.video_path).name))
             self.table.setItem(row, 1, QTableWidgetItem("already done" if done else "pending"))
             self.table.setItem(row, 2, QTableWidgetItem(""))
-        self.lbl_overall.setText(f"{len(self._items)} video(s) found.")
-        self._refresh_summary()
-        self._set_run_enabled()
 
     def _remove_selected(self) -> None:
         if self._running:
@@ -167,8 +175,14 @@ class BatchDialog(QDialog):
             del self._items[row]
         self._set_run_enabled()
 
+    def _has_export_format(self) -> bool:
+        export = self._controls.snapshot_for_batch().export
+        return bool(export["tiff"] or export["jpeg"])
+
     def _set_run_enabled(self) -> None:
-        self.btn_run.setEnabled(not self._running and bool(self._items))
+        self.btn_run.setEnabled(
+            not self._running and bool(self._items) and self._has_export_format()
+        )
         self._update_run_tooltip()
 
     def _update_run_tooltip(self) -> None:
@@ -176,13 +190,18 @@ class BatchDialog(QDialog):
             tip = "Batch processing is currently in progress…"
         elif not self._items:
             tip = "Select a folder with video files to enable batch processing"
+        elif not self._has_export_format():
+            tip = "Select TIFF and/or JPEG in the main window's Export panel first"
         else:
             tip = "Run batch processing on all queued videos"
         self.btn_run.setToolTip(tip)
 
     def _run(self) -> None:
-        if not self._items:
+        if not self._items or not self._has_export_format():
             return
+        # A re-run starts from fresh items so rows from the previous run
+        # (cancelled, failed, stale "running") don't carry over.
+        self._fill_queue([it.video_path for it in self._items])
         self._running = True
         self._set_run_enabled()
         self.btn_cancel.setEnabled(True)
@@ -212,6 +231,8 @@ class BatchDialog(QDialog):
             b.setEnabled(True)
         self.progress.setValue(0)
         tail = f" · cancelled: {summary['cancelled']}" if summary.get("cancelled") else ""
+        if summary.get("pending"):
+            tail += f" · not started: {summary['pending']}"
         self.lbl_overall.setText(
             f"Done: {summary['done']} · failed: {summary['failed']} · "
             f"skipped: {summary['skipped']}{tail}"

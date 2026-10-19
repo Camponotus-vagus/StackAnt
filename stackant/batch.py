@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv"}
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".m4v", ".mts", ".m2ts"}
 
 
 def _is_video(p: Path) -> bool:

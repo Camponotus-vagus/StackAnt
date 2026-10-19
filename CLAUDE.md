@@ -55,7 +55,8 @@ stackant/
   batch_controller.py      sequential batch state machine (QObject)
   folder_loader.py         list_images() for image-folder input
   settings.py              QSettings load/save wrappers
-  tempfiles.py             temp-dir tracking + cleanup
+  tempfiles.py             temp-dir tracking + cleanup (+ stale sweep at startup)
+  imread.py                Unicode-path-safe cv2.imread (use instead of cv2.imread)
   preview.py               Stacked-image display + crop
   thumbnails.py            Pillow-based filmstrip thumbnail rendering
   exporter.py              TIFF + JPEG save

@@ -87,3 +87,40 @@ def test_decimation_preserves_forced_include_even_over_budget():
 def test_decimation_disabled_when_none():
     state = FilterState(scores=[10.0] * 10, threshold=5.0, decimation_target=None)
     assert sum(state.kept_mask()) == 10
+
+
+def test_score_frames_non_ascii_path(tmp_path):
+    import cv2
+
+    from stackant.frame_filter import score_frames
+
+    d = tmp_path / "José"
+    d.mkdir()
+    img = np.random.default_rng(0).integers(0, 255, (64, 64), dtype=np.uint8)
+    ok, buf = cv2.imencode(".png", img)
+    assert ok
+    p = d / "f.png"
+    buf.tofile(str(p))
+    (fs,) = score_frames([str(p)])
+    assert fs.readable and fs.laplacian_var > 0
+
+
+def test_unreadable_frames_excluded_from_threshold(tmp_path):
+    from stackant.frame_filter import (
+        FrameScore,
+        auto_threshold_for,
+        count_unreadable,
+        score_frames,
+    )
+
+    bad = score_frames([str(tmp_path / "missing.png")])
+    assert bad[0].readable is False and bad[0].laplacian_var == 0.0
+    scored = [FrameScore(0, "a", 10.0), FrameScore(1, "b", 10.0), FrameScore(2, "c", 0.0, readable=False)]
+    assert auto_threshold_for(scored) == pytest.approx(10.0)
+    assert count_unreadable(scored) == 1
+    assert auto_threshold_for(scored[2:]) == 0.0
+    assert auto_threshold_for([]) == 0.0
+
+
+def test_auto_threshold_ignores_non_finite():
+    assert auto_threshold([10.0, float("nan"), 10.0, float("inf")]) == pytest.approx(10.0)

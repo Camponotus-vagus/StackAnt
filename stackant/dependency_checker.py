@@ -34,6 +34,7 @@ def _probe_version(path: str) -> str | None:
             [path, "--version"],
             capture_output=True,
             text=True,
+            errors="replace",
             timeout=5,
             check=False,
         )
