@@ -71,6 +71,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   frames; `run.py` hands over from macOS's Python 3.9 to a newer Python if
   one is installed.
 
+### Fixed (macOS 27)
+
+- StackAnt crashed at launch with `trace trap` and no message on macOS 27
+  when a required tool was missing: Qt 6.11's native alert (NSAlert) throws
+  during layout. The missing-dependencies dialog and the export overwrite
+  prompt now use Qt's own dialog, and the missing-tools text is also printed
+  to the terminal.
+- Tools in `~/.local/bin`, `/opt/homebrew/bin` or `/usr/local/bin` are found
+  even when that folder is not on PATH (typical for a self-built focus-stack
+  or a Finder-launched app).
+
 ## [0.3.1] — 2026-06-08
 
 ### Added

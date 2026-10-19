@@ -15,6 +15,9 @@ from dataclasses import dataclass
 
 REQUIRED_TOOLS: tuple[str, ...] = ("ffmpeg", "focus-stack")
 _ALLOW_MISSING_ENV = "STACKANT_ALLOW_MISSING"
+# Where tools usually land outside a GUI-launched PATH: a self-built
+# focus-stack copied to ~/.local/bin, Homebrew on Apple silicon and Intel.
+_EXTRA_TOOL_DIRS: tuple[str, ...] = ("~/.local/bin", "/opt/homebrew/bin", "/usr/local/bin")
 
 
 @dataclass(frozen=True)
@@ -42,6 +45,28 @@ def _probe_version(path: str) -> str | None:
         return None
     raw = (result.stdout or result.stderr or "").strip()
     return raw.splitlines()[0] if raw else None
+
+
+def augment_path(env=None) -> list[str]:
+    """Append existing well-known tool dirs missing from PATH; return those added.
+
+    Appended, not prepended, so the user's own PATH order still wins. Both the
+    check below and every QProcess launch resolve tools through this PATH.
+    """
+    if os.name == "nt":
+        return []
+    env = os.environ if env is None else env
+    current = env.get("PATH", "")
+    parts = [p for p in current.split(os.pathsep) if p]
+    added = []
+    for raw in _EXTRA_TOOL_DIRS:
+        folder = os.path.expanduser(raw)
+        if folder not in parts and os.path.isdir(folder):
+            parts.append(folder)
+            added.append(folder)
+    if added:
+        env["PATH"] = os.pathsep.join(parts)
+    return added
 
 
 def check() -> list[ToolStatus]:
