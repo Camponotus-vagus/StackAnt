@@ -33,3 +33,26 @@ def test_sweep_keeps_dirs_tracked_by_this_process(tmp_path, monkeypatch):
     monkeypatch.setattr(tempfiles, "_TRACKED", [tracked])
     assert tempfiles.sweep_stale(max_age_hours=24, root=str(tmp_path)) == 0
     assert tracked.exists()
+
+
+def test_sweep_skips_symlinked_stackant_entries(tmp_path):
+    target = tmp_path / "victim"
+    target.mkdir()
+    (target / "keep.txt").write_bytes(b"x")
+    _age(target, 48)
+    link = tmp_path / "stackant_link"
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        return
+    assert tempfiles.sweep_stale(max_age_hours=24, root=str(tmp_path)) == 0
+    assert (target / "keep.txt").exists()
+
+
+def test_sweep_skips_dirs_owned_by_other_users(tmp_path, monkeypatch):
+    old = tmp_path / "stackant_foreign"
+    old.mkdir()
+    _age(old, 48)
+    monkeypatch.setattr(tempfiles, "_owned_by_current_user", lambda st: False)
+    assert tempfiles.sweep_stale(max_age_hours=24, root=str(tmp_path)) == 0
+    assert old.exists()

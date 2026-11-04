@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import atexit
+import os
 import shutil
+import stat
 import tempfile
 import time
 from pathlib import Path
@@ -40,6 +42,13 @@ def remove_temp_dir(path) -> None:
         pass
 
 
+def _owned_by_current_user(st: os.stat_result) -> bool:
+    # The system temp dir is shared on POSIX: never delete a symlink or another
+    # user's stackant_* dir (matters most when the app is run as root).
+    getuid = getattr(os, "getuid", None)
+    return getuid is None or st.st_uid == getuid()
+
+
 def sweep_stale(max_age_hours: float = 24.0, root: str | None = None) -> int:
     """Delete untracked stackant_* dirs left by a crash or SIGKILL; return the count.
 
@@ -56,7 +65,13 @@ def sweep_stale(max_age_hours: float = 24.0, root: str | None = None) -> int:
         return 0
     for d in candidates:
         try:
-            if not d.is_dir() or d in _TRACKED or d.stat().st_mtime > cutoff:
+            st = d.lstat()
+            if (
+                not stat.S_ISDIR(st.st_mode)
+                or not _owned_by_current_user(st)
+                or d in _TRACKED
+                or st.st_mtime > cutoff
+            ):
                 continue
         except OSError:
             continue
