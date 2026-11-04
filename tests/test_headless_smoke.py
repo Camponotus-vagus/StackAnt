@@ -737,3 +737,13 @@ class TestSharpStrengthRetired:
 
     def test_params_still_carry_sharp_strength(self, win):
         assert "sharp_strength" in win.controls.stack_controls.params()
+
+
+def test_advanced_stack_inputs_have_accessible_names():
+    from stackant.widgets.stack_controls import StackControls
+
+    app = make_app()  # noqa: F841 - keep the QApplication alive
+    sc = StackControls()
+    for w in (sc.spn_consistency, sc.spn_halo, sc.txt_extra,
+              sc.spn_pyramid_depth, sc.spn_guided_radius):
+        assert w.accessibleName()

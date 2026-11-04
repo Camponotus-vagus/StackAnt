@@ -96,8 +96,11 @@ class StackControls(QGroupBox):
         fs = QVBoxLayout(_fs_group)
 
         row = QHBoxLayout()
-        row.addWidget(QLabel("Consistency (0–2):"))
+        lbl_consistency = QLabel("Consistency (0–2):")
+        row.addWidget(lbl_consistency)
         self.spn_consistency = QSpinBox()
+        lbl_consistency.setBuddy(self.spn_consistency)
+        self.spn_consistency.setAccessibleName("Consistency")
         self.spn_consistency.setRange(0, 2)
         self.spn_consistency.setValue(2)
         self.spn_consistency.setToolTip(
@@ -130,6 +133,7 @@ class StackControls(QGroupBox):
         self.spn_halo.setRange(1, 200)
         self.spn_halo.setValue(32)
         self.spn_halo.setEnabled(False)
+        self.spn_halo.setAccessibleName("Halo radius in pixels")
         self.chk_halo.toggled.connect(self.spn_halo.setEnabled)
         row.addWidget(self.chk_halo)
         row.addWidget(self.spn_halo)
@@ -144,8 +148,11 @@ class StackControls(QGroupBox):
         )
         fs.addWidget(self.chk_no_opencl)
 
-        fs.addWidget(QLabel("Extra CLI flags (passed verbatim):"))
+        lbl_extra = QLabel("Extra CLI flags (passed verbatim):")
+        fs.addWidget(lbl_extra)
         self.txt_extra = QLineEdit()
+        lbl_extra.setBuddy(self.txt_extra)
+        self.txt_extra.setAccessibleName("Extra focus-stack command-line flags")
         self.txt_extra.setPlaceholderText("e.g. --threads=4 --no-contrast")
         fs.addWidget(self.txt_extra)
 
@@ -155,8 +162,11 @@ class StackControls(QGroupBox):
         py = QVBoxLayout(py_group)
 
         row = QHBoxLayout()
-        row.addWidget(QLabel("Pyramid depth:"))
+        lbl_depth = QLabel("Pyramid depth:")
+        row.addWidget(lbl_depth)
         self.spn_pyramid_depth = QSpinBox()
+        lbl_depth.setBuddy(self.spn_pyramid_depth)
+        self.spn_pyramid_depth.setAccessibleName("Pyramid depth")
         self.spn_pyramid_depth.setRange(0, 12)
         self.spn_pyramid_depth.setSpecialValueText("auto")
         self.spn_pyramid_depth.setValue(0)
@@ -169,8 +179,11 @@ class StackControls(QGroupBox):
         py.addLayout(row)
 
         row = QHBoxLayout()
-        row.addWidget(QLabel("Guided-filter radius:"))
+        lbl_radius = QLabel("Guided-filter radius:")
+        row.addWidget(lbl_radius)
         self.spn_guided_radius = QSpinBox()
+        lbl_radius.setBuddy(self.spn_guided_radius)
+        self.spn_guided_radius.setAccessibleName("Guided-filter radius")
         self.spn_guided_radius.setRange(4, 32)
         self.spn_guided_radius.setValue(8)
         self.spn_guided_radius.setToolTip(
