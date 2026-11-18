@@ -129,6 +129,25 @@ reliable; already the default on macOS).
   <https://github.com/PetteriAimonen/focus-stack/releases> and put it in
   a folder on `PATH`.
 
+**macOS**
+
+```bash
+brew install ffmpeg opencv pkg-config dylibbundler
+git clone https://github.com/PetteriAimonen/focus-stack.git
+cd focus-stack && make
+sudo make install                # installs to /usr/local/bin
+# …or, without sudo:
+mkdir -p ~/.local/bin && cp build/focus-stack ~/.local/bin/
+```
+
+StackAnt also looks in `~/.local/bin`, `/opt/homebrew/bin` and
+`/usr/local/bin` when they are not on `PATH`. Upstream publishes an
+unsigned prebuilt app bundle on the
+[releases page](https://github.com/PetteriAimonen/focus-stack/releases)
+too; its command-line binary is
+`focus-stack.app/Contents/MacOS/focus-stack` and has to be reachable
+from one of those folders.
+
 ### 2. StackAnt
 
 ```bash
