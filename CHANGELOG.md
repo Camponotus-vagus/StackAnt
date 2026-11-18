@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Redrawn app icon: an anatomically fuller ant (jointed legs, elbowed
+  antennae, mandibles, segmented gaster) with out-of-focus copies converging
+  into the sharp one. `assets/icon.png` is now 512 px.
+
+### Added
+
+- `assets/icon.icns`, a full-bleed macOS icon so the system applies its own
+  mask instead of boxing the icon in a grey plate.
+
 ## [0.3.2] — 2026-10-19
 
 ### Added
