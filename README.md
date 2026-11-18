@@ -132,21 +132,37 @@ reliable; already the default on macOS).
 **macOS**
 
 ```bash
-brew install ffmpeg opencv pkg-config dylibbundler
-git clone https://github.com/PetteriAimonen/focus-stack.git
-cd focus-stack && make
-sudo make install                # installs to /usr/local/bin
-# …or, without sudo:
-mkdir -p ~/.local/bin && cp build/focus-stack ~/.local/bin/
+brew install ffmpeg
 ```
 
-StackAnt also looks in `~/.local/bin`, `/opt/homebrew/bin` and
-`/usr/local/bin` when they are not on `PATH`. Upstream publishes an
-unsigned prebuilt app bundle on the
-[releases page](https://github.com/PetteriAimonen/focus-stack/releases)
-too; its command-line binary is
-`focus-stack.app/Contents/MacOS/focus-stack` and has to be reachable
-from one of those folders.
+For `focus-stack`, download `focus-stack_MacOSX.zip` from
+<https://github.com/PetteriAimonen/focus-stack/releases>, unzip it, and
+link the command-line binary inside the app bundle:
+
+```bash
+mkdir -p ~/.local/share/focus-stack ~/.local/bin
+mv focus-stack.app ~/.local/share/focus-stack/
+# The bundle is unsigned; run this if macOS calls it "damaged":
+xattr -d com.apple.quarantine ~/.local/share/focus-stack/focus-stack.app
+ln -s ~/.local/share/focus-stack/focus-stack.app/Contents/MacOS/focus-stack \
+  ~/.local/bin/focus-stack
+```
+
+StackAnt looks in `~/.local/bin`, `/opt/homebrew/bin` and
+`/usr/local/bin` even when they are not on `PATH`.
+
+Building from source also works, with one catch: Homebrew's OpenCV 5
+ships only `opencv5.pc`, while the focus-stack Makefile asks pkg-config
+for `opencv4`, so the file has to be exposed under that name:
+
+```bash
+brew install opencv pkg-config
+git clone https://github.com/PetteriAimonen/focus-stack.git
+cd focus-stack
+mkdir -p pc && ln -s "$(brew --prefix opencv)/lib/pkgconfig/opencv5.pc" pc/opencv4.pc
+PKG_CONFIG_PATH="$PWD/pc" make
+mkdir -p ~/.local/bin && cp build/focus-stack ~/.local/bin/
+```
 
 ### 2. StackAnt
 

@@ -107,11 +107,12 @@ def _install_hint(tool: str, system: str) -> str:
             )
         if system == "Darwin":
             return (
-                "  • focus-stack: build from source (PetteriAimonen/focus-stack):\n"
-                "      brew install opencv pkg-config dylibbundler\n"
-                "      git clone https://github.com/PetteriAimonen/focus-stack\n"
-                "      cd focus-stack && make\n"
-                "      sudo make install"
+                "  • focus-stack: download focus-stack_MacOSX.zip from\n"
+                "      https://github.com/PetteriAimonen/focus-stack/releases\n"
+                "    unzip it, then link the binary inside the app bundle:\n"
+                "      mkdir -p ~/.local/bin\n"
+                "      ln -s /path/to/focus-stack.app/Contents/MacOS/focus-stack"
+                " ~/.local/bin/focus-stack"
             )
         return "  • focus-stack: build from https://github.com/PetteriAimonen/focus-stack"
     return f"  • {tool}: install and add to PATH."

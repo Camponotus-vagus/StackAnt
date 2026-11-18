@@ -81,5 +81,5 @@ def test_macos_hints_use_homebrew(monkeypatch):
     ]
     msg = missing_deps_message(statuses)
     assert "brew install ffmpeg" in msg
-    assert "brew install opencv pkg-config dylibbundler" in msg
-    assert "sudo make install" in msg
+    assert "focus-stack_MacOSX.zip" in msg
+    assert "focus-stack.app/Contents/MacOS/focus-stack" in msg
