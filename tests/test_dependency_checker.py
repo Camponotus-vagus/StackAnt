@@ -71,3 +71,15 @@ def test_probe_version_survives_invalid_utf8(tmp_path):
     tool.chmod(0o755)
     version = _probe_version(str(tool))
     assert version is not None and "1.0" in version
+
+
+def test_macos_hints_use_homebrew(monkeypatch):
+    monkeypatch.setattr("platform.system", lambda: "Darwin")
+    statuses = [
+        ToolStatus("ffmpeg", None, None),
+        ToolStatus("focus-stack", None, None),
+    ]
+    msg = missing_deps_message(statuses)
+    assert "brew install ffmpeg" in msg
+    assert "brew install opencv pkg-config dylibbundler" in msg
+    assert "sudo make install" in msg
