@@ -239,6 +239,12 @@ See `CHANGELOG.md` for details.
 Bug reports and pull requests welcome. Please include the contents of
 the log panel (use the **Copy log** button) when reporting a problem.
 
+## Support
+
+StackAnt is free and open source. If it saves you time, you can support
+its development on [Ko-fi](https://ko-fi.com/zermat) or through
+[GitHub Sponsors](https://github.com/sponsors/Camponotus-vagus).
+
 ## License
 
 MIT — see `LICENSE`.
