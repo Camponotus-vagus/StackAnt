@@ -230,6 +230,12 @@ First functional release.
 
 ## Roadmap
 
+### [0.5] — next (pulled ahead of 0.4)
+
+- Windows installer (PyInstaller) with ffmpeg bundled and the Pyramid
+  stacker only, so end users don't need a Python toolchain. macOS and
+  Linux bundles follow.
+
 ### [0.4] — planned
 
 - Optional input downscaling to make GPU stacking viable on
@@ -237,11 +243,6 @@ First functional release.
 - Reproducibility manifest on export (JSON sidecar listing kept frame
   paths, Laplacian scores, subprocess commands, tool versions).
 - Windows end-to-end validation.
-
-### [0.5] — planned
-
-- Bundled distribution (PyInstaller or similar) so end users don't
-  need a Python toolchain.
 
 ### [1.0] — stable
 

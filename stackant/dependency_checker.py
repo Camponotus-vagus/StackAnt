@@ -88,6 +88,8 @@ def _install_hint(tool: str, system: str) -> str:
                 "      https://www.gyan.dev/ffmpeg/builds/\n"
                 "    and add the bin/ folder to PATH."
             )
+        if system == "Darwin":
+            return "  • ffmpeg (Homebrew):\n      brew install ffmpeg"
         return "  • ffmpeg: install via your package manager."
     if tool == "focus-stack":
         if system == "Linux":
@@ -95,13 +97,22 @@ def _install_hint(tool: str, system: str) -> str:
                 "  • focus-stack: build from source (PetteriAimonen/focus-stack):\n"
                 "      git clone https://github.com/PetteriAimonen/focus-stack\n"
                 "      cd focus-stack && make\n"
-                "      sudo cp focus-stack /usr/local/bin/"
+                "      sudo cp build/focus-stack /usr/local/bin/"
             )
         if system == "Windows":
             return (
                 "  • focus-stack: download a release binary from\n"
                 "      https://github.com/PetteriAimonen/focus-stack/releases\n"
                 "    and place it in a folder on PATH."
+            )
+        if system == "Darwin":
+            return (
+                "  • focus-stack: download focus-stack_MacOSX.zip from\n"
+                "      https://github.com/PetteriAimonen/focus-stack/releases\n"
+                "    unzip it, then link the binary inside the app bundle:\n"
+                "      mkdir -p ~/.local/bin\n"
+                "      ln -s /path/to/focus-stack/focus-stack.app/Contents/MacOS/focus-stack"
+                " ~/.local/bin/focus-stack"
             )
         return "  • focus-stack: build from https://github.com/PetteriAimonen/focus-stack"
     return f"  • {tool}: install and add to PATH."
