@@ -170,6 +170,12 @@ class StackControls(QGroupBox):
         self.spn_pyramid_depth.setRange(0, 12)
         self.spn_pyramid_depth.setSpecialValueText("auto")
         self.spn_pyramid_depth.setValue(0)
+        # The macOS style sizes a spin box a few pixels short of its special
+        # text, clipping "auto" to "uto".
+        self.spn_pyramid_depth.setMinimumWidth(
+            self.spn_pyramid_depth.sizeHint().width()
+            + self.spn_pyramid_depth.fontMetrics().horizontalAdvance("a")
+        )
         self.spn_pyramid_depth.setToolTip(
             "Number of Laplacian pyramid levels.\n"
             "0 = auto (chosen from image dimensions)."
