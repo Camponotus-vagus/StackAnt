@@ -1,4 +1,8 @@
-# StackAnt
+<p align="center">
+  <img src="assets/icon.png" alt="StackAnt icon" width="128" />
+</p>
+
+<h1 align="center">StackAnt</h1>
 
 [![CI](https://github.com/Camponotus-vagus/StackAnt/actions/workflows/ci.yml/badge.svg)](https://github.com/Camponotus-vagus/StackAnt/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -23,7 +27,7 @@ focus — all without manually picking and stacking frames.
 
 ## Features
 
-- Load a video (MP4/MOV/AVI/MKV) **or** an existing folder of images.
+- Load a video (MP4/MOV/AVI/MKV/M4V/MTS/M2TS) **or** an existing folder of images.
 - Extract frames through `ffmpeg` with optional decimation.
 - Automatic blur detection (Laplacian variance) flags unusable transition
   frames; a slider tunes the threshold live.
@@ -86,7 +90,7 @@ video:
 - **[ffmpeg](https://ffmpeg.org/)** on your PATH.
 - **[focus-stack](https://github.com/PetteriAimonen/focus-stack)** on
   your PATH (Petteri Aimonen's CLI — not any other "focus-stack" tool).
-- Linux (primary) or Windows.
+- Linux (primary), Windows, or macOS.
 
 StackAnt shows a blocking dialog at launch if either tool is missing,
 with exact install instructions for your platform.
@@ -110,10 +114,11 @@ mkdir -p ~/.local/bin && cp build/focus-stack ~/.local/bin/
 `libxcb-cursor0` is required by PyQt6 ≥ 6.5 on X11. Without it the app
 aborts at launch with "no Qt platform plugin could be initialized".
 
-**Note on OpenCL:** on some machines `focus-stack` fails mid-run with a
-`CL_OUT_OF_RESOURCES` error from the GPU driver. If that happens, open
-the **Advanced** panel and check **Disable OpenCL (GPU)** — stacking
-falls back to CPU-only processing (slower but reliable).
+**Note on OpenCL:** on some machines `focus-stack` fails mid-run with an
+OpenCL error from the GPU driver (e.g. `CL_OUT_OF_RESOURCES`). StackAnt
+retries once on the CPU automatically; to skip the GPU from the start,
+open **Advanced options** and check **Disable OpenCL (GPU)** (slower but
+reliable; already the default on macOS).
 
 **Windows**
 
@@ -127,8 +132,8 @@ falls back to CPU-only processing (slower but reliable).
 ### 2. StackAnt
 
 ```bash
-git clone <this-repo-url> stackant
-cd stackant
+git clone https://github.com/Camponotus-vagus/StackAnt.git
+cd StackAnt
 python3 run.py                   # Windows: py run.py
 ```
 
@@ -182,11 +187,13 @@ stacking method alongside `focus-stack`, same algorithm family as Helicon
 "Method C" and Zerene "PMax") and **v0.3 — Batch processing** (queue a
 folder of videos and run the full pipeline on each). Next up:
 
+- **v0.5 — Windows installer (next, pulled ahead of v0.4):** a
+  self-contained build with ffmpeg bundled and the Pyramid stacker only,
+  so end users don't need a Python toolchain. macOS and Linux bundles
+  follow.
 - **v0.4 — Polish:** optional input downscaling for
   memory-constrained integrated GPUs, reproducibility manifest on
   export, Windows end-to-end validation.
-- **v0.5 — Bundled installers** so end users don't need a Python
-  toolchain.
 - **v1.0 — Stable release** once everything above is shipped and
   verified without caveats.
 

@@ -95,7 +95,7 @@ def _install_hint(tool: str, system: str) -> str:
                 "  • focus-stack: build from source (PetteriAimonen/focus-stack):\n"
                 "      git clone https://github.com/PetteriAimonen/focus-stack\n"
                 "      cd focus-stack && make\n"
-                "      sudo cp focus-stack /usr/local/bin/"
+                "      sudo cp build/focus-stack /usr/local/bin/"
             )
         if system == "Windows":
             return (
