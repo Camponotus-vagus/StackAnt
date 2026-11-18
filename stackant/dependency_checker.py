@@ -111,7 +111,7 @@ def _install_hint(tool: str, system: str) -> str:
                 "      https://github.com/PetteriAimonen/focus-stack/releases\n"
                 "    unzip it, then link the binary inside the app bundle:\n"
                 "      mkdir -p ~/.local/bin\n"
-                "      ln -s /path/to/focus-stack.app/Contents/MacOS/focus-stack"
+                "      ln -s /path/to/focus-stack/focus-stack.app/Contents/MacOS/focus-stack"
                 " ~/.local/bin/focus-stack"
             )
         return "  • focus-stack: build from https://github.com/PetteriAimonen/focus-stack"

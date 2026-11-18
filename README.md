@@ -141,9 +141,9 @@ link the command-line binary inside the app bundle:
 
 ```bash
 mkdir -p ~/.local/share/focus-stack ~/.local/bin
-mv focus-stack.app ~/.local/share/focus-stack/
+mv focus-stack/focus-stack.app ~/.local/share/focus-stack/
 # The bundle is unsigned; run this if macOS calls it "damaged":
-xattr -d com.apple.quarantine ~/.local/share/focus-stack/focus-stack.app
+xattr -dr com.apple.quarantine ~/.local/share/focus-stack/focus-stack.app
 ln -s ~/.local/share/focus-stack/focus-stack.app/Contents/MacOS/focus-stack \
   ~/.local/bin/focus-stack
 ```
